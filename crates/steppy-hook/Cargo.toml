@@ -1,0 +1,13 @@
+[package]
+name = "steppy-hook"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "步步 Steppy 的极小 hook 命令：把 Claude Code / Codex 的事件转发给本机宠物"
+
+[[bin]]
+name = "steppy-hook"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"

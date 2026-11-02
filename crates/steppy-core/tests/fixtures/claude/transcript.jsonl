@@ -1,0 +1,11 @@
+{"type":"user","message":{"role":"user","content":"帮我写一个解析器"},"sessionId":"t1","cwd":"/home/me/app"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"好的"},{"type":"tool_use","id":"toolu_a","name":"TaskCreate","input":{"subject":"读取配置","activeForm":"正在读取配置"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_a","content":"Task #1 created"}]},"toolUseResult":{"task":{"id":"1","subject":"读取配置"}}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_b","name":"TaskCreate","input":{"subject":"写解析器"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_b","content":"Task #2 created"}]},"toolUseResult":{"task":{"id":"2","subject":"写解析器"}}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_c","name":"TaskCreate","input":{"subject":"临时任务"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_c","content":"Task #3 created"}]},"tool_use_result":{"task":{"id":"3","subject":"临时任务"}}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_d","name":"TaskUpdate","input":{"taskId":"1","status":"completed"}},{"type":"tool_use","id":"toolu_e","name":"TaskUpdate","input":{"id":"2","status":"in_progress"}},{"type":"tool_use","id":"toolu_f","name":"TaskUpdate","input":{"task_id":"3","status":"deleted"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_g","name":"TaskCreate","input":{"subject":"失败的创建"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_g","content":"error","is_error":true}]}}
+this line is not json
