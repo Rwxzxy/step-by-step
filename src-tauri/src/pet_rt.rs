@@ -533,17 +533,20 @@ impl Engine {
                     }
                     self.visit_started
                         .insert(owner.clone(), self.state.mono_ms());
-                    let _ = self.state.app.emit_to(
-                        label.as_str(),
-                        "pet://bubble",
-                        notify::Bubble {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            text: format!("我是{}的步步，来串门啦！", visitor.owner_name),
-                            kind: "info".into(),
-                            actions: vec![],
-                            ttl_ms: 5000,
-                        },
-                    );
+                    // 新窗口的页面要过一会儿才加载完，稍等再打招呼。
+                    let app = self.state.app.clone();
+                    let greet = notify::Bubble {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        text: format!("我是{}的步步，来串门啦！", visitor.owner_name),
+                        kind: "info".into(),
+                        actions: vec![],
+                        ttl_ms: 5000,
+                    };
+                    let target = label.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(1500));
+                        let _ = app.emit_to(target.as_str(), "pet://bubble", greet);
+                    });
                     let _ = self.state.app.emit("steppy://guest", ());
                     self.state.mark_dirty();
                 }

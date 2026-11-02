@@ -27,8 +27,12 @@ export function TodaySection({ items, onOpenCalendar, now }: { items: AgendaItem
                   {it.conflict_of && <span className="tag warn">冲突副本</span>}
                 </span>
                 <span className="muted small">
-                  {it.data.repeat !== "none" && REPEAT_LABEL[it.data.repeat]}
-                  {it.data.remind_before_min !== null && ` · 提前 ${it.data.remind_before_min} 分钟提醒`}
+                  {[
+                    it.data.repeat !== "none" ? REPEAT_LABEL[it.data.repeat] : null,
+                    it.data.remind_before_min !== null ? `提前 ${it.data.remind_before_min} 分钟提醒` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
                 {ongoing && <span className="tag">进行中</span>}
               </li>

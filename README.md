@@ -9,6 +9,8 @@
 
 ![步步的全部动作](docs/sprites.png)
 
+![面板概览（Xvfb 下的真实截图，右下角是宠物）](docs/panel-overview.png)
+
 > 仓库名 `step-by-step` 是历史遗留；应用名是 **步步 Steppy**（安装包文件名为 `Steppy`）。
 
 ---

@@ -78,7 +78,7 @@ jobs:
       - name: 两个实例的端到端测试（Xvfb）
         if: runner.os == 'Linux'
         run: |
-          cargo build -p steppy
+          cargo build -p steppy --features tauri/custom-protocol
           xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \
             python3 e2e/two_instances.py target/debug/steppy target/release/steppy-hook
 

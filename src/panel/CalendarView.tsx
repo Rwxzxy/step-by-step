@@ -1,5 +1,5 @@
 // 日程表：日视图 / 周视图，新建、编辑、删除，.ics 导入导出。
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, on } from "../api";
 import type { AgendaItem, EventData, Repeat } from "../types";
 import {
@@ -22,6 +22,13 @@ export function CalendarView({ notify }: { notify: (msg: string) => void }) {
   const [cursor, setCursor] = useState(() => startOfDay(new Date()));
   const [items, setItems] = useState<AgendaItem[]>([]);
   const [editing, setEditing] = useState<{ id: string | null; data: EventData } | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // 打开时滚到早上（或当前时间前一小时）附近，而不是半夜。
+  useEffect(() => {
+    const h = Math.max(0, Math.min(new Date().getHours() - 1, 8));
+    if (bodyRef.current) bodyRef.current.scrollTop = h * HOUR_PX;
+  }, [mode]);
 
   const range = useMemo(() => {
     const from = mode === "day" ? cursor : startOfWeek(cursor);
@@ -116,7 +123,7 @@ export function CalendarView({ notify }: { notify: (msg: string) => void }) {
             </div>
           ))}
         </div>
-        <div className="grid-body">
+        <div className="grid-body" ref={bodyRef}>
           <div className="gutter">
             {Array.from({ length: 24 }, (_, h) => (
               <div key={h} className="hour-label" style={{ height: HOUR_PX }}>

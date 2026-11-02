@@ -129,7 +129,7 @@ describe("今天的日程", () => {
     const review = screen.getByText("09:30–10:30").closest("li")!;
     expect(review).toHaveClass("ongoing");
     expect(within(review).getByText("进行中")).toBeInTheDocument();
-    expect(within(review).getByText(/工作日 · 提前 10 分钟提醒/)).toBeInTheDocument();
+    expect(within(review).getByText("工作日 · 提前 10 分钟提醒")).toBeInTheDocument();
     await userEvent.click(screen.getByText("打开日程表 →"));
     expect(open).toHaveBeenCalled();
   });
