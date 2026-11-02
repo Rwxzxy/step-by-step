@@ -69,6 +69,7 @@ fn snapshot(state: &Shared) -> Value {
         "frames": frames,
         "calendar": calendar_rt::all_records(state),
         "peers": state.net.connected_peers(),
+        "peer_info": state.peers.lock().unwrap().iter().map(|(k, v)| (k.clone(), serde_json::to_value(&v.info).unwrap_or(Value::Null))).collect::<serde_json::Map<_, _>>(),
     })
 }
 

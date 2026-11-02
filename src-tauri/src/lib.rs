@@ -59,7 +59,12 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .clear_targets()
-                .level(log::LevelFilter::Info)
+                .level(
+                    std::env::var("STEPPY_LOG")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(log::LevelFilter::Info),
+                )
                 .level_for("mdns_sd", log::LevelFilter::Warn)
                 .target(tauri_plugin_log::Target::new(
                     tauri_plugin_log::TargetKind::LogDir {

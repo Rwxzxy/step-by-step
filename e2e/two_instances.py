@@ -33,15 +33,27 @@ class Instance:
         self.name = name
         self.dir = os.path.join(base, name)
         self.data = os.path.join(self.dir, "data")
-        home = os.path.join(self.dir, "home")
+        self.home = os.path.join(self.dir, "home")
         os.makedirs(self.data)
-        os.makedirs(home)
-        env = dict(os.environ, XDG_DATA_HOME=self.data, HOME=home, STEPPY_E2E="1")
-        self.log = open(os.path.join(self.dir, "log.txt"), "w")
-        self.proc = subprocess.Popen([APP], env=env, stdout=self.log, stderr=subprocess.STDOUT)
+        os.makedirs(self.home)
         self.endpoint = os.path.join(self.data, "steppy", "endpoint.json")
-        wait(lambda: os.path.exists(self.endpoint) and self.ep().get("pid") == self.proc.pid, f"{name} 启动", 60)
-        wait(lambda: self.snap()["snapshot"]["net_port"] > 0, f"{name} 网络就绪", 30)
+        self.log = open(os.path.join(self.dir, "log.txt"), "a")
+        self.start()
+
+    def start(self):
+        env = dict(os.environ, XDG_DATA_HOME=self.data, HOME=self.home, STEPPY_E2E="1", STEPPY_LOG="debug")
+        self.proc = subprocess.Popen([APP], env=env, stdout=self.log, stderr=subprocess.STDOUT)
+        wait(lambda: os.path.exists(self.endpoint) and self.ep().get("pid") == self.proc.pid, f"{self.name} 启动", 60)
+        wait(lambda: self.snap()["snapshot"]["net_port"] > 0, f"{self.name} 网络就绪", 30)
+
+    def crash(self):
+        """模拟断电 / 拔网线：直接杀掉进程，不做任何清理。"""
+        self.proc.kill()
+        self.proc.wait(10)
+
+    def log_text(self):
+        with open(os.path.join(self.dir, "log.txt"), errors="replace") as f:
+            return f.read()
 
     def ep(self):
         try:
@@ -171,9 +183,13 @@ def main():
         a.call("go_visit", side="right")
 
         def where():
-            sa, sb = a.snap(), b.snap()
+            sa = a.snap()
+            try:
+                sb = b.snap()
+                at_b = ida in sb["visible_guests"]
+            except Exception:  # noqa: BLE001  B 已离线
+                at_b = False
             at_home = sa["frames"].get("pet", {}).get("visible") and sa["owner_state"]["state"] == "home"
-            at_b = ida in sb["visible_guests"]
             assert not (at_home and at_b), "宠物同时出现在两台机器上！"
             return sa["owner_state"]["state"], at_b
 
@@ -184,6 +200,32 @@ def main():
             time.sleep(0.5)
         a.call("recall")
         wait(lambda: where() == ("home", False), "召回后回到 A", 60)
+        assert "宠物回家：Returned" in a.log_text(), "召回应该走正常的 Return 流程，而不是超时收回"
+        print("  ✓ 正常回家（Return），不是超时收回")
+
+        print("串门途中对方断电…")
+        a.call("go_visit", side="right")
+        wait(lambda: where() == ("away", True), "再次出门到 B", 60)
+        b.crash()
+        t0 = time.time()
+        wait(lambda: where()[0] == "home", "B 断电后宠物回到 A", 60)
+        print(f"  ✓ 约 {time.time() - t0:.0f} 秒后收回，期间从未同时出现")
+        assert "宠物回家：Reclaimed" in a.log_text()
+
+        print("断线期间的变化自动补齐…")
+        offline_ev = a.call(
+            "save_event",
+            title="B 离线时加的日程",
+            notes="",
+            all_day=True,
+            start="2026-11-04T00:00:00",
+            end="2026-11-05T00:00:00",
+            repeat="none",
+            remind_before_min=None,
+        )
+        b.start()
+        wait(lambda: idb in a.snap()["peers"] and ida in b.snap()["peers"], "B 重启后自动重连", 60)
+        wait(lambda: any(r["id"] == offline_ev for r in b.snap()["calendar"]), "B 补齐离线期间的日程")
 
         print("踢出成员…")
         epoch0 = a.snap()["snapshot"]["group"]["epoch"]

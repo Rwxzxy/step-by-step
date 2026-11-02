@@ -37,7 +37,9 @@ pub enum PetCmd {
     Poke,
     DragStart(String),
     DragEnd(String),
-    Msg(NodeId, PetMsg),
+    /// 收到的交接消息和收到时的单调时间（不是处理时间：引擎线程可能因创建窗口等原因延迟处理，
+    /// 用处理时间判断续约是否迟到会误判）。
+    Msg(NodeId, PetMsg, i64),
     Recall,
     GoVisit(Side),
     SendGuestHome(NodeId),
@@ -120,7 +122,8 @@ pub fn pet_is_home(state: &AppState) -> bool {
 }
 
 pub fn on_pet_msg(state: &Shared, from: &str, msg: PetMsg) {
-    push(state, PetCmd::Msg(from.to_string(), msg));
+    let received = state.mono_ms();
+    push(state, PetCmd::Msg(from.to_string(), msg, received));
 }
 
 pub fn on_peer_connected(state: &Shared, _peer: &str) {
@@ -361,6 +364,9 @@ pub fn start(state: Shared) {
                 let t0 = Instant::now();
                 e.tick();
                 let spent = t0.elapsed();
+                if spent > Duration::from_millis(200) {
+                    log::debug!("宠物引擎一帧耗时 {spent:?}");
+                }
                 std::thread::sleep(Duration::from_millis(33).saturating_sub(spent));
             }
         })
@@ -485,9 +491,11 @@ impl Engine {
 
     fn apply_owner_actions(&mut self, actions: Vec<OwnerAction>) {
         for a in actions {
+            log::debug!("主人动作：{a:?}");
             match a {
                 OwnerAction::Send(to, m) => self.send(&to, m),
                 OwnerAction::ShowAtHome { from, reason } => {
+                    log::info!("宠物回家：{reason:?}（来自 {from:?}）");
                     let (w, h) = self.size_of("pet");
                     let side = from
                         .as_deref()
@@ -515,6 +523,7 @@ impl Engine {
 
     fn apply_host_actions(&mut self, actions: Vec<HostAction>) {
         for a in actions {
+            log::debug!("接待动作：{a:?}");
             match a {
                 HostAction::Send(to, m) => self.send(&to, m),
                 HostAction::ShowGuest { owner, visitor } => {
@@ -605,7 +614,6 @@ impl Engine {
 
     fn process_queue(&mut self) {
         let cmds: Vec<PetCmd> = std::mem::take(&mut self.state.pet.lock().unwrap().queue);
-        let now_mono = self.state.mono_ms();
         let now_wall = steppy_core::now_ms();
         for c in cmds {
             match c {
@@ -655,7 +663,12 @@ impl Engine {
                         }
                     }
                 }
-                PetCmd::Msg(from, msg) => {
+                PetCmd::Msg(from, msg, received) => {
+                    log::debug!(
+                        "交接消息 来自 {from}：{:?}（seq {}，收到于 {received}）",
+                        msg.kind,
+                        msg.seq
+                    );
                     if &msg.pet == self.state.me() {
                         let acts = self
                             .state
@@ -663,7 +676,7 @@ impl Engine {
                             .lock()
                             .unwrap()
                             .owner
-                            .on_msg(&from, &msg, now_mono);
+                            .on_msg(&from, &msg, received);
                         self.apply_owner_actions(acts);
                     } else {
                         let willing =
@@ -674,7 +687,7 @@ impl Engine {
                                 .guests
                                 .entry(msg.pet.clone())
                                 .or_insert_with(|| GuestSlot::new(msg.pet.clone()));
-                            slot.on_msg(&from, &msg, now_mono, willing)
+                            slot.on_msg(&from, &msg, received, willing)
                         };
                         self.apply_host_actions(acts);
                     }
@@ -685,6 +698,10 @@ impl Engine {
                 }
                 PetCmd::GoVisit(side) => {
                     let home = self.state.pet.lock().unwrap().owner.is_home();
+                    log::info!(
+                        "去串门：{side:?}，在家={home}，邻居可用={:?}",
+                        neighbor_available(&self.state, side)
+                    );
                     if home && neighbor_available(&self.state, side).is_some() {
                         if let Some(w) = self.wins.get_mut("pet") {
                             w.brain.request_exit(side);
@@ -887,6 +904,7 @@ impl Engine {
             match (label.as_str(), ev) {
                 ("pet", BrainEvent::Exited(side)) => {
                     self.last_exit_side = side;
+                    log::info!("宠物走出了{side:?}边缘");
                     match neighbor_available(&self.state, side) {
                         Some(target) => {
                             let visitor = Visitor {

@@ -459,7 +459,9 @@ async fn connect_session(state: Shared, addr: SocketAddr) -> anyhow::Result<()> 
             Ok((h3, session)) => {
                 send_json(&mut stream, &h3).await?;
                 state.net.remember_addr(&session.peer, addr);
-                run_connection(
+                // 连接本身在独立的任务里运行：调用方给“连接 + 握手”设了超时，
+                // 如果把会话循环也放在超时里，超时一到读取就会被取消（写入却还在继续）。
+                tauri::async_runtime::spawn(run_connection(
                     state,
                     stream,
                     session.peer,
@@ -468,8 +470,7 @@ async fn connect_session(state: Shared, addr: SocketAddr) -> anyhow::Result<()> 
                     session.send,
                     session.recv,
                     Some(addr),
-                )
-                .await;
+                ));
                 return Ok(());
             }
             Err(e) => last_err = anyhow::anyhow!("握手失败：{e}"),
@@ -570,7 +571,9 @@ async fn run_connection(
                 m = rx.recv() => {
                     let Some(m) = m else { break };
                     let frame = send.seal(&m.encode());
+                    log::trace!("写入第 {id} 号连接 {} 字节", frame.len());
                     if write_frame(&mut wr, &frame).await.is_err() { break; }
+                    log::trace!("写完第 {id} 号连接");
                 }
                 _ = ping.tick() => {
                     let frame = send.seal(&WireMsg::Ping.encode());
@@ -587,8 +590,12 @@ async fn run_connection(
             r = tokio::time::timeout(IDLE_TIMEOUT, read_frame(&mut rd)) => {
                 let frame = match r {
                     Ok(Ok(f)) => f,
-                    _ => break,
+                    other => {
+                        log::debug!("第 {id} 号连接读取结束：{:?}", other.map(|x| x.map(|f| f.len())));
+                        break;
+                    }
                 };
+                log::trace!("第 {id} 号连接读到 {} 字节", frame.len());
                 let plain = match recv.open(&frame) {
                     Ok(p) => p,
                     Err(e) => {
@@ -622,11 +629,13 @@ async fn run_connection(
 
 fn on_connected(state: &Shared, peer: &str, epoch: u32) {
     log::info!("已连接 {peer}（epoch {epoch}）");
+    // 同一台机器可能先后建立两条连接（双方同时发起），不要用新连接清掉已收到的资料。
     state
         .peers
         .lock()
         .unwrap()
-        .insert(peer.to_string(), PeerEntry { info: None });
+        .entry(peer.to_string())
+        .or_insert(PeerEntry { info: None });
     let mut info = state.peer_info();
     info.shares_content = state.settings().shares_content_with(peer);
     state.net.send(peer, WireMsg::Hello(info));
@@ -661,6 +670,10 @@ fn on_disconnected(state: &Shared, peer: &str) {
 }
 
 fn on_wire(state: &Shared, peer: &str, msg: WireMsg) {
+    if log::log_enabled!(log::Level::Trace) {
+        let kind = format!("{msg:?}");
+        log::trace!("收到 {peer}：{}", kind.chars().take(60).collect::<String>());
+    }
     match msg {
         WireMsg::Hello(info) => {
             if let Some(p) = state.peers.lock().unwrap().get_mut(peer) {
