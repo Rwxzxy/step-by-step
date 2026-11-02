@@ -322,6 +322,8 @@ struct Engine {
     state: Shared,
     wins: HashMap<String, WinState>,
     screens: Vec<Screen>,
+    /// 主显示器工作区的右侧（宠物第一次出现的位置）。
+    home_x: Option<f64>,
     screens_at: Instant,
     drag: Option<(String, f64, f64)>,
     last_exit_side: Side,
@@ -338,6 +340,7 @@ pub fn start(state: Shared) {
                 state: state.clone(),
                 wins: HashMap::new(),
                 screens: Vec::new(),
+                home_x: None,
                 screens_at: Instant::now() - Duration::from_secs(10),
                 drag: None,
                 last_exit_side: Side::Right,
@@ -392,6 +395,11 @@ impl Engine {
                     })
                     .collect();
                 self.screens.sort_by_key(|s| s.work.x);
+                if let Ok(Some(p)) = self.state.app.primary_monitor() {
+                    let wa = p.work_area();
+                    let w = PET_W * p.scale_factor();
+                    self.home_x = Some(wa.position.x as f64 + wa.size.width as f64 - w * 1.5);
+                }
             }
             _ => {}
         }
@@ -414,7 +422,7 @@ impl Engine {
         brain.tuning.wander_exit_chance = 0.0;
         let size = (PET_W * scale, PET_H * scale);
         if label == "pet" {
-            brain.place(&self.screens, None, size.0, size.1);
+            brain.place(&self.screens, self.home_x, size.0, size.1);
             brain.hide();
         } else {
             brain.hide();
@@ -769,6 +777,7 @@ impl Engine {
             let owner = label.strip_prefix("guest-").map(|s| s.to_string());
             let st = self.state.clone();
             let screens = self.screens.clone();
+            let home_x = self.home_x;
             let drag = self.drag.clone();
             let Some(w) = self.wins.get_mut(&label) else {
                 continue;
@@ -791,7 +800,7 @@ impl Engine {
                 w.brain.tuning.wander_exit_chance = if settings.wander_visits { 0.08 } else { 0.0 };
                 // 主人状态从“不在家”变回“在家”的那一刻由 ShowAtHome 处理；这里只处理首次显示。
                 if owner_home && w.brain.is_hidden() && !w.shown && w.last_frame.is_none() {
-                    w.brain.place(&screens, None, w.size.0, w.size.1);
+                    w.brain.place(&screens, home_x, w.size.0, w.size.1);
                 }
             }
             if let (Some((dl, dx, dy)), Some(c)) = (drag.as_ref(), cursor) {

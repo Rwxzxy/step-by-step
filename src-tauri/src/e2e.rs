@@ -126,6 +126,10 @@ fn call(state: &Shared, cmd: &str, args: Value) -> Result<Value, String> {
             pet_rt::go_visit(state, side);
             Ok(Value::Null)
         }
+        "open_panel" => {
+            commands::open_panel_window(&state.app, &s(&args, "tab"));
+            Ok(Value::Null)
+        }
         "recall" => {
             pet_rt::recall(state);
             Ok(Value::Null)
