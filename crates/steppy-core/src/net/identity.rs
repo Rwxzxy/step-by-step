@@ -14,7 +14,9 @@ pub struct Identity {
 
 impl std::fmt::Debug for Identity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Identity").field("node_id", &self.node_id).finish_non_exhaustive()
+        f.debug_struct("Identity")
+            .field("node_id", &self.node_id)
+            .finish_non_exhaustive()
     }
 }
 
@@ -27,6 +29,13 @@ pub struct IdentityFile {
 /// 由公钥计算 node id。
 pub fn node_id_for(pubkey: &VerifyingKey) -> NodeId {
     hex::encode(&Sha256::digest(pubkey.as_bytes())[..8])
+}
+
+/// 由十六进制公钥计算 node id；公钥无效时返回 None。
+pub fn node_id_from_pubkey_hex(pub_hex: &str) -> Option<NodeId> {
+    let bytes: [u8; 32] = hex::decode(pub_hex).ok()?.try_into().ok()?;
+    let vk = VerifyingKey::from_bytes(&bytes).ok()?;
+    Some(node_id_for(&vk))
 }
 
 impl Identity {
@@ -46,7 +55,9 @@ impl Identity {
     }
 
     pub fn to_file(&self) -> IdentityFile {
-        IdentityFile { secret_hex: hex::encode(self.signing.to_bytes()) }
+        IdentityFile {
+            secret_hex: hex::encode(self.signing.to_bytes()),
+        }
     }
 
     pub fn public_hex(&self) -> String {
@@ -60,13 +71,21 @@ impl Identity {
 
 /// 用十六进制公钥验证签名，同时确认公钥与 node id 对应。
 pub fn verify(pub_hex: &str, node_id: &str, msg: &[u8], sig: &[u8]) -> bool {
-    let Ok(bytes) = hex::decode(pub_hex) else { return false };
-    let Ok(arr): Result<[u8; 32], _> = bytes.try_into() else { return false };
-    let Ok(vk) = VerifyingKey::from_bytes(&arr) else { return false };
+    let Ok(bytes) = hex::decode(pub_hex) else {
+        return false;
+    };
+    let Ok(arr): Result<[u8; 32], _> = bytes.try_into() else {
+        return false;
+    };
+    let Ok(vk) = VerifyingKey::from_bytes(&arr) else {
+        return false;
+    };
     if node_id_for(&vk) != node_id {
         return false;
     }
-    let Ok(sig_arr): Result<[u8; 64], _> = sig.try_into() else { return false };
+    let Ok(sig_arr): Result<[u8; 64], _> = sig.try_into() else {
+        return false;
+    };
     vk.verify(msg, &Signature::from_bytes(&sig_arr)).is_ok()
 }
 
@@ -86,6 +105,14 @@ mod tests {
         assert!(!verify(&other.public_hex(), &id.node_id, b"hi", &sig));
         let restored = Identity::from_file(&id.to_file()).unwrap();
         assert_eq!(restored.node_id, id.node_id);
-        assert!(Identity::from_file(&IdentityFile { secret_hex: "zz".into() }).is_none());
+        assert!(Identity::from_file(&IdentityFile {
+            secret_hex: "zz".into()
+        })
+        .is_none());
+        assert_eq!(
+            node_id_from_pubkey_hex(&id.public_hex()),
+            Some(id.node_id.clone())
+        );
+        assert_eq!(node_id_from_pubkey_hex("00"), None);
     }
 }

@@ -26,11 +26,14 @@ fn default_endpoint() -> Option<PathBuf> {
     let base = if cfg!(windows) {
         std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
     } else if cfg!(target_os = "macos") {
-        std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support"))
+        std::env::var_os("HOME")
+            .map(|h| PathBuf::from(h).join("Library").join("Application Support"))
     } else {
         std::env::var_os("XDG_DATA_HOME")
             .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share")))
+            .or_else(|| {
+                std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share"))
+            })
     };
     base.map(|b| b.join("steppy").join("endpoint.json"))
 }
@@ -52,7 +55,9 @@ fn read_endpoint(path: &PathBuf) -> Option<Endpoint> {
 /// 把 body POST 给宠物。任何失败都静默返回。
 fn post(ep: &Endpoint, path: &str, body: &[u8]) {
     let addr = SocketAddr::from(([127, 0, 0, 1], ep.port));
-    let Ok(mut s) = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) else { return };
+    let Ok(mut s) = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) else {
+        return;
+    };
     let _ = s.set_write_timeout(Some(IO_TIMEOUT));
     let _ = s.set_read_timeout(Some(IO_TIMEOUT));
     let head = format!(
@@ -70,18 +75,29 @@ fn post(ep: &Endpoint, path: &str, body: &[u8]) {
 }
 
 fn arg_value(args: &[String], flag: &str) -> Option<String> {
-    args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned()
+    args.iter()
+        .position(|a| a == flag)
+        .and_then(|i| args.get(i + 1))
+        .cloned()
 }
 
 fn run(args: Vec<String>) {
     let mode = args.first().map(|s| s.as_str()).unwrap_or("claude");
-    let endpoint_path = arg_value(&args, "--endpoint").map(PathBuf::from).or_else(default_endpoint);
+    let endpoint_path = arg_value(&args, "--endpoint")
+        .map(PathBuf::from)
+        .or_else(default_endpoint);
     let endpoint = endpoint_path.as_ref().and_then(read_endpoint);
 
     match mode {
         "codex-notify" => {
             // Codex 把 JSON 作为最后一个参数追加。
-            let Some(json) = args.last().filter(|a| a.trim_start().starts_with('{')).cloned() else { return };
+            let Some(json) = args
+                .last()
+                .filter(|a| a.trim_start().starts_with('{'))
+                .cloned()
+            else {
+                return;
+            };
             if let Some(ep) = &endpoint {
                 post(ep, "/v1/codex/notify", json.as_bytes());
             }
@@ -142,7 +158,10 @@ mod tests {
                 let path = std::env::temp_dir().join(format!(
                     "steppy-hook-test-{}-{}",
                     std::process::id(),
-                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos()
                 ));
                 std::fs::create_dir_all(&path).unwrap();
                 Dir { path }
@@ -158,18 +177,31 @@ mod tests {
     #[test]
     fn exits_fast_when_pet_not_running() {
         // 找一个空闲端口然后关掉，保证没有人在监听。
-        let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
         let (_d, p) = write_endpoint(port);
         let ep = read_endpoint(&p).unwrap();
         let t = Instant::now();
         post(&ep, "/v1/claude", b"{}");
-        assert!(t.elapsed() < Duration::from_millis(500), "{:?}", t.elapsed());
+        assert!(
+            t.elapsed() < Duration::from_millis(500),
+            "{:?}",
+            t.elapsed()
+        );
     }
 
     #[test]
     fn missing_endpoint_file_is_harmless() {
         assert!(read_endpoint(&PathBuf::from("/definitely/not/here.json")).is_none());
-        run(vec!["codex-notify".into(), "--endpoint".into(), "/nope.json".into(), "not json".into()]);
+        run(vec![
+            "codex-notify".into(),
+            "--endpoint".into(),
+            "/nope.json".into(),
+            "not json".into(),
+        ]);
     }
 
     #[test]
@@ -208,10 +240,18 @@ mod tests {
 
     #[test]
     fn arg_parsing() {
-        let args: Vec<String> = ["codex-notify", "--endpoint", "/x.json", "--then", "notify-send", "Codex", "{\"type\":1}"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let args: Vec<String> = [
+            "codex-notify",
+            "--endpoint",
+            "/x.json",
+            "--then",
+            "notify-send",
+            "Codex",
+            "{\"type\":1}",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         assert_eq!(arg_value(&args, "--endpoint").as_deref(), Some("/x.json"));
         assert!(default_endpoint().is_some() || std::env::var_os("HOME").is_none());
     }

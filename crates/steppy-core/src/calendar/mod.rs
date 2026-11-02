@@ -144,7 +144,10 @@ mod tests {
     use chrono::NaiveDate;
 
     fn dt(y: i32, m: u32, d: u32, h: u32, mi: u32) -> NaiveDateTime {
-        NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, mi, 0).unwrap()
+        NaiveDate::from_ymd_opt(y, m, d)
+            .unwrap()
+            .and_hms_opt(h, mi, 0)
+            .unwrap()
     }
 
     #[test]

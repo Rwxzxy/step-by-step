@@ -64,7 +64,12 @@ fn vv_max(a: &BTreeMap<String, u64>, b: &BTreeMap<String, u64>) -> BTreeMap<Stri
 /// 确定性的全序：用于并发冲突时挑胜者。
 fn tiebreak_key(r: &EventRecord) -> (i64, &str, [u8; 32], bool) {
     let hash = r.data.as_ref().map(|d| d.content_hash()).unwrap_or([0; 32]);
-    (r.modified_ms, r.modified_by.as_str(), hash, r.data.is_some())
+    (
+        r.modified_ms,
+        r.modified_by.as_str(),
+        hash,
+        r.data.is_some(),
+    )
 }
 
 fn pick<'a>(a: &'a EventRecord, b: &'a EventRecord) -> (&'a EventRecord, &'a EventRecord) {
@@ -78,7 +83,11 @@ fn pick<'a>(a: &'a EventRecord, b: &'a EventRecord) -> (&'a EventRecord, &'a Eve
 /// 冲突副本的确定性 id。
 pub fn conflict_copy_id(original_id: &str, loser: &EventData) -> String {
     let hash = hex::encode(&loser.content_hash()[..8]);
-    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, format!("steppy-conflict:{original_id}:{hash}").as_bytes()).to_string()
+    uuid::Uuid::new_v5(
+        &uuid::Uuid::NAMESPACE_OID,
+        format!("steppy-conflict:{original_id}:{hash}").as_bytes(),
+    )
+    .to_string()
 }
 
 /// 冲突副本的标题前缀。
@@ -113,11 +122,20 @@ pub struct Merged {
 pub fn merge_record(a: &EventRecord, b: &EventRecord) -> Merged {
     assert_eq!(a.id, b.id, "只能合并同一条日程");
     match compare_vv(&a.vv, &b.vv) {
-        Causality::After => Merged { record: a.clone(), conflict_copy: None },
-        Causality::Before => Merged { record: b.clone(), conflict_copy: None },
+        Causality::After => Merged {
+            record: a.clone(),
+            conflict_copy: None,
+        },
+        Causality::Before => Merged {
+            record: b.clone(),
+            conflict_copy: None,
+        },
         Causality::Equal => {
             let (w, _) = pick(a, b);
-            Merged { record: w.clone(), conflict_copy: None }
+            Merged {
+                record: w.clone(),
+                conflict_copy: None,
+            }
         }
         Causality::Concurrent => {
             let vv = vv_max(&a.vv, &b.vv);
@@ -140,7 +158,10 @@ pub fn merge_record(a: &EventRecord, b: &EventRecord) -> Merged {
             let _ = loser;
             let mut record = winner.clone();
             record.vv = vv;
-            Merged { record, conflict_copy: copy }
+            Merged {
+                record,
+                conflict_copy: copy,
+            }
         }
     }
 }
@@ -148,7 +169,10 @@ pub fn merge_record(a: &EventRecord, b: &EventRecord) -> Merged {
 /// 把一批收到的记录合并进本地日程表。返回发生变化的 id（包括新产生的冲突副本）。
 ///
 /// 冲突副本本身也走同样的合并：两台机器各自生成的同一个副本完全相同，合并后不变。
-pub fn merge_into(local: &mut BTreeMap<String, EventRecord>, incoming: impl IntoIterator<Item = EventRecord>) -> Vec<String> {
+pub fn merge_into(
+    local: &mut BTreeMap<String, EventRecord>,
+    incoming: impl IntoIterator<Item = EventRecord>,
+) -> Vec<String> {
     let mut changed = Vec::new();
     let mut queue: Vec<EventRecord> = incoming.into_iter().collect();
     while let Some(rec) = queue.pop() {
@@ -185,8 +209,14 @@ mod tests {
             title: title.into(),
             notes: String::new(),
             all_day: false,
-            start: NaiveDate::from_ymd_opt(2026, 11, 3).unwrap().and_hms_opt(9, 0, 0).unwrap(),
-            end: NaiveDate::from_ymd_opt(2026, 11, 3).unwrap().and_hms_opt(10, 0, 0).unwrap(),
+            start: NaiveDate::from_ymd_opt(2026, 11, 3)
+                .unwrap()
+                .and_hms_opt(9, 0, 0)
+                .unwrap(),
+            end: NaiveDate::from_ymd_opt(2026, 11, 3)
+                .unwrap()
+                .and_hms_opt(10, 0, 0)
+                .unwrap(),
             repeat: Repeat::None,
             remind_before_min: Some(10),
         }
@@ -198,11 +228,27 @@ mod tests {
 
     #[test]
     fn vv_comparison() {
-        let m = |xs: &[(&str, u64)]| xs.iter().map(|(k, v)| (k.to_string(), *v)).collect::<BTreeMap<_, _>>();
-        assert_eq!(compare_vv(&m(&[("A", 1)]), &m(&[("A", 1)])), Causality::Equal);
-        assert_eq!(compare_vv(&m(&[("A", 2)]), &m(&[("A", 1)])), Causality::After);
-        assert_eq!(compare_vv(&m(&[("A", 1)]), &m(&[("A", 1), ("B", 1)])), Causality::Before);
-        assert_eq!(compare_vv(&m(&[("A", 2)]), &m(&[("A", 1), ("B", 1)])), Causality::Concurrent);
+        let m = |xs: &[(&str, u64)]| {
+            xs.iter()
+                .map(|(k, v)| (k.to_string(), *v))
+                .collect::<BTreeMap<_, _>>()
+        };
+        assert_eq!(
+            compare_vv(&m(&[("A", 1)]), &m(&[("A", 1)])),
+            Causality::Equal
+        );
+        assert_eq!(
+            compare_vv(&m(&[("A", 2)]), &m(&[("A", 1)])),
+            Causality::After
+        );
+        assert_eq!(
+            compare_vv(&m(&[("A", 1)]), &m(&[("A", 1), ("B", 1)])),
+            Causality::Before
+        );
+        assert_eq!(
+            compare_vv(&m(&[("A", 2)]), &m(&[("A", 1), ("B", 1)])),
+            Causality::Concurrent
+        );
         assert_eq!(compare_vv(&m(&[]), &m(&[("A", 0)])), Causality::Equal);
     }
 
@@ -348,7 +394,11 @@ mod tests {
         assert_eq!(results[0]["e1"].data.as_ref().unwrap().title, "C");
         // 主记录相同；每种顺序下 A、B 的内容都至少以冲突副本保留（不丢数据）。
         for r in &results {
-            let titles: Vec<_> = r.values().filter_map(|x| x.data.as_ref()).map(|d| d.title.clone()).collect();
+            let titles: Vec<_> = r
+                .values()
+                .filter_map(|x| x.data.as_ref())
+                .map(|d| d.title.clone())
+                .collect();
             assert!(titles.contains(&"（冲突副本）A".to_string()), "{titles:?}");
             assert!(titles.contains(&"（冲突副本）B".to_string()), "{titles:?}");
         }

@@ -98,16 +98,31 @@ fn transcript(h1: &Hello1, r_node: &str, r_eph: &str, r_nonce: &str) -> [u8; 32]
 }
 
 fn auth_key(group_key: &[u8; 32], epoch: u32) -> [u8; 32] {
-    hkdf32(None, group_key, &[b"steppy-auth".as_slice(), &epoch.to_be_bytes()].concat())
+    hkdf32(
+        None,
+        group_key,
+        &[b"steppy-auth".as_slice(), &epoch.to_be_bytes()].concat(),
+    )
 }
 
 fn decode32(s: &str) -> Result<[u8; 32], HandshakeError> {
-    hex::decode(s).ok().and_then(|v| v.try_into().ok()).ok_or(HandshakeError::Malformed)
+    hex::decode(s)
+        .ok()
+        .and_then(|v| v.try_into().ok())
+        .ok_or(HandshakeError::Malformed)
 }
 
 fn derive_keys(group_key: &[u8; 32], shared: &[u8; 32], t: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
-    let i2r = hkdf32(Some(group_key), shared, &[b"steppy-i2r".as_slice(), t].concat());
-    let r2i = hkdf32(Some(group_key), shared, &[b"steppy-r2i".as_slice(), t].concat());
+    let i2r = hkdf32(
+        Some(group_key),
+        shared,
+        &[b"steppy-i2r".as_slice(), t].concat(),
+    );
+    let r2i = hkdf32(
+        Some(group_key),
+        shared,
+        &[b"steppy-r2i".as_slice(), t].concat(),
+    );
     (i2r, r2i)
 }
 
@@ -119,7 +134,10 @@ pub struct CipherState {
 
 impl CipherState {
     pub fn new(key: [u8; 32]) -> Self {
-        CipherState { cipher: ChaCha20Poly1305::new(Key::from_slice(&key)), counter: 0 }
+        CipherState {
+            cipher: ChaCha20Poly1305::new(Key::from_slice(&key)),
+            counter: 0,
+        }
     }
 
     fn nonce(counter: u64) -> [u8; 12] {
@@ -134,7 +152,13 @@ impl CipherState {
         let aad = c.to_be_bytes();
         let ct = self
             .cipher
-            .encrypt(Nonce::from_slice(&Self::nonce(c)), Payload { msg: plaintext, aad: &aad })
+            .encrypt(
+                Nonce::from_slice(&Self::nonce(c)),
+                Payload {
+                    msg: plaintext,
+                    aad: &aad,
+                },
+            )
             .expect("encrypt");
         let mut out = Vec::with_capacity(8 + ct.len());
         out.extend_from_slice(&aad);
@@ -148,11 +172,20 @@ impl CipherState {
         }
         let got = u64::from_be_bytes(frame[..8].try_into().unwrap());
         if got != self.counter {
-            return Err(FrameError::Replay { expected: self.counter, got });
+            return Err(FrameError::Replay {
+                expected: self.counter,
+                got,
+            });
         }
         let pt = self
             .cipher
-            .decrypt(Nonce::from_slice(&Self::nonce(got)), Payload { msg: &frame[8..], aad: &frame[..8] })
+            .decrypt(
+                Nonce::from_slice(&Self::nonce(got)),
+                Payload {
+                    msg: &frame[8..],
+                    aad: &frame[..8],
+                },
+            )
             .map_err(|_| FrameError::Auth)?;
         self.counter += 1;
         Ok(pt)
@@ -186,12 +219,30 @@ impl Initiator {
             eph: hex::encode(eph_pub.as_bytes()),
             nonce: hex::encode(random_bytes::<32>()),
         };
-        (Initiator { hello1: hello1.clone(), eph }, hello1)
+        (
+            Initiator {
+                hello1: hello1.clone(),
+                eph,
+            },
+            hello1,
+        )
     }
 
-    pub fn finish(self, me: &Identity, group: &GroupState, h2: &Hello2) -> Result<(Hello3, Session), HandshakeError> {
-        let gk = group.key_for(self.hello1.epoch).ok_or(HandshakeError::UnknownEpoch)?.bytes();
-        let peer = group.members.get(&h2.node_id).filter(|m| !m.removed).ok_or(HandshakeError::NotMember)?;
+    pub fn finish(
+        self,
+        me: &Identity,
+        group: &GroupState,
+        h2: &Hello2,
+    ) -> Result<(Hello3, Session), HandshakeError> {
+        let gk = group
+            .key_for(self.hello1.epoch)
+            .ok_or(HandshakeError::UnknownEpoch)?
+            .bytes();
+        let peer = group
+            .members
+            .get(&h2.node_id)
+            .filter(|m| !m.removed)
+            .ok_or(HandshakeError::NotMember)?;
         let t = transcript(&self.hello1, &h2.node_id, &h2.eph, &h2.nonce);
         let ak = auth_key(&gk, self.hello1.epoch);
         let mac = hex::decode(&h2.mac).map_err(|_| HandshakeError::Malformed)?;
@@ -199,7 +250,12 @@ impl Initiator {
             return Err(HandshakeError::BadMac);
         }
         let sig = hex::decode(&h2.sig).map_err(|_| HandshakeError::Malformed)?;
-        if !verify(&peer.pubkey, &peer.node_id, &[b"R".as_slice(), &t].concat(), &sig) {
+        if !verify(
+            &peer.pubkey,
+            &peer.node_id,
+            &[b"R".as_slice(), &t].concat(),
+            &sig,
+        ) {
             return Err(HandshakeError::BadSignature);
         }
         let r_eph = PublicKey::from(decode32(&h2.eph)?);
@@ -211,7 +267,12 @@ impl Initiator {
         };
         Ok((
             h3,
-            Session { peer: h2.node_id.clone(), epoch: self.hello1.epoch, send: CipherState::new(i2r), recv: CipherState::new(r2i) },
+            Session {
+                peer: h2.node_id.clone(),
+                epoch: self.hello1.epoch,
+                send: CipherState::new(i2r),
+                recv: CipherState::new(r2i),
+            },
         ))
     }
 }
@@ -226,7 +287,11 @@ pub struct Responder {
 }
 
 impl Responder {
-    pub fn respond(me: &Identity, group: &GroupState, h1: &Hello1) -> Result<(Responder, Hello2), HandshakeError> {
+    pub fn respond(
+        me: &Identity,
+        group: &GroupState,
+        h1: &Hello1,
+    ) -> Result<(Responder, Hello2), HandshakeError> {
         if h1.v != PROTOCOL_VERSION {
             return Err(HandshakeError::Version);
         }
@@ -236,7 +301,10 @@ impl Responder {
         if !group.is_active_member(&h1.node_id) || h1.node_id == me.node_id {
             return Err(HandshakeError::NotMember);
         }
-        let gk = group.key_for(h1.epoch).ok_or(HandshakeError::UnknownEpoch)?.bytes();
+        let gk = group
+            .key_for(h1.epoch)
+            .ok_or(HandshakeError::UnknownEpoch)?
+            .bytes();
         let eph = EphemeralSecret::random_from_rng(rand::rngs::OsRng);
         let eph_pub = hex::encode(PublicKey::from(&eph).as_bytes());
         let nonce = hex::encode(random_bytes::<32>());
@@ -252,17 +320,35 @@ impl Responder {
             sig: hex::encode(me.sign(&[b"R".as_slice(), &t].concat())),
             mac: hex::encode(hmac(&ak, &[b"R", &t])),
         };
-        Ok((Responder { t, peer: h1.node_id.clone(), epoch: h1.epoch, keys, ak }, h2))
+        Ok((
+            Responder {
+                t,
+                peer: h1.node_id.clone(),
+                epoch: h1.epoch,
+                keys,
+                ak,
+            },
+            h2,
+        ))
     }
 
     pub fn finish(self, group: &GroupState, h3: &Hello3) -> Result<Session, HandshakeError> {
-        let peer = group.members.get(&self.peer).filter(|m| !m.removed).ok_or(HandshakeError::NotMember)?;
+        let peer = group
+            .members
+            .get(&self.peer)
+            .filter(|m| !m.removed)
+            .ok_or(HandshakeError::NotMember)?;
         let mac = hex::decode(&h3.mac).map_err(|_| HandshakeError::Malformed)?;
         if !hmac_verify(&self.ak, &[b"I", &self.t], &mac) {
             return Err(HandshakeError::BadMac);
         }
         let sig = hex::decode(&h3.sig).map_err(|_| HandshakeError::Malformed)?;
-        if !verify(&peer.pubkey, &peer.node_id, &[b"I".as_slice(), &self.t].concat(), &sig) {
+        if !verify(
+            &peer.pubkey,
+            &peer.node_id,
+            &[b"I".as_slice(), &self.t].concat(),
+            &sig,
+        ) {
             return Err(HandshakeError::BadSignature);
         }
         Ok(Session {
@@ -300,7 +386,12 @@ mod tests {
         (a, b, g)
     }
 
-    fn handshake(a: &Identity, ga: &GroupState, b: &Identity, gb: &GroupState) -> Result<(Session, Session), HandshakeError> {
+    fn handshake(
+        a: &Identity,
+        ga: &GroupState,
+        b: &Identity,
+        gb: &GroupState,
+    ) -> Result<(Session, Session), HandshakeError> {
         let (init, h1) = Initiator::start(a, ga, None);
         let (resp, h2) = Responder::respond(b, gb, &h1)?;
         let (h3, sa) = init.finish(a, ga, &h2)?;
@@ -349,7 +440,13 @@ mod tests {
         let f1 = sa.send.seal(b"one");
         let f2 = sa.send.seal(b"two");
         assert!(sb.recv.open(&f1).is_ok());
-        assert_eq!(sb.recv.open(&f1), Err(FrameError::Replay { expected: 1, got: 0 }));
+        assert_eq!(
+            sb.recv.open(&f1),
+            Err(FrameError::Replay {
+                expected: 1,
+                got: 0
+            })
+        );
         assert!(sb.recv.open(&f2).is_ok());
         // 旧会话的帧不能在新会话里重放。
         let (_, mut sb_new) = handshake(&a, &g, &b, &g).unwrap();
@@ -373,9 +470,15 @@ mod tests {
         let (init, h1) = Initiator::start(&a, &forged, None);
         let (resp, h2) = Responder::respond(&b, &g, &h1).unwrap();
         // 发起方先发现响应方的 MAC 不对。
-        assert_eq!(init.finish(&a, &forged, &h2).err(), Some(HandshakeError::BadMac));
+        assert_eq!(
+            init.finish(&a, &forged, &h2).err(),
+            Some(HandshakeError::BadMac)
+        );
         // 构造一个用错误密钥算出的 Hello3。
-        let bogus = Hello3 { sig: hex::encode(a.sign(b"whatever")), mac: hex::encode([0u8; 32]) };
+        let bogus = Hello3 {
+            sig: hex::encode(a.sign(b"whatever")),
+            mac: hex::encode([0u8; 32]),
+        };
         assert_eq!(resp.finish(&g, &bogus).err(), Some(HandshakeError::BadMac));
     }
 
@@ -393,14 +496,20 @@ mod tests {
         let (a, b, mut g) = setup();
         let outsider = Identity::generate();
         let (_, h1) = Initiator::start(&outsider, &g, None);
-        assert_eq!(Responder::respond(&b, &g, &h1).err(), Some(HandshakeError::NotMember));
+        assert_eq!(
+            Responder::respond(&b, &g, &h1).err(),
+            Some(HandshakeError::NotMember)
+        );
 
         // 踢出 b 并轮换密钥。b 还拿着旧状态。
         let b_old_state = g.clone();
         g.remove_member(&b.node_id, &a.node_id);
         // b 用旧 epoch 发起：成员检查失败。
         let (_, h1) = Initiator::start(&b, &b_old_state, None);
-        assert_eq!(Responder::respond(&a, &g, &h1).err(), Some(HandshakeError::NotMember));
+        assert_eq!(
+            Responder::respond(&a, &g, &h1).err(),
+            Some(HandshakeError::NotMember)
+        );
         // b 冒充 a 的 node id 用旧密钥连接第三台机器：签名对不上。
         let c = Identity::generate();
         let mut g3 = b_old_state.clone();
@@ -410,7 +519,10 @@ mod tests {
         init.hello1.node_id = a.node_id.clone();
         let (resp, h2) = Responder::respond(&c, &g3, &h1).unwrap();
         let (h3, _) = init.finish(&b, &g3, &h2).unwrap();
-        assert_eq!(resp.finish(&g3, &h3).err(), Some(HandshakeError::BadSignature));
+        assert_eq!(
+            resp.finish(&g3, &h3).err(),
+            Some(HandshakeError::BadSignature)
+        );
     }
 
     #[test]
@@ -428,10 +540,16 @@ mod tests {
         // 未知 epoch：拒绝。
         let (_, mut h1) = Initiator::start(&b, &b_view, None);
         h1.epoch = 99;
-        assert_eq!(Responder::respond(&a, &g, &h1).err(), Some(HandshakeError::UnknownEpoch));
+        assert_eq!(
+            Responder::respond(&a, &g, &h1).err(),
+            Some(HandshakeError::UnknownEpoch)
+        );
         // 不同组：拒绝。
         let other = GroupState::create(&b, "B", "乙", 0, 0);
         let (_, h1) = Initiator::start(&b, &other, None);
-        assert_eq!(Responder::respond(&a, &g, &h1).err(), Some(HandshakeError::WrongGroup));
+        assert_eq!(
+            Responder::respond(&a, &g, &h1).err(),
+            Some(HandshakeError::WrongGroup)
+        );
     }
 }

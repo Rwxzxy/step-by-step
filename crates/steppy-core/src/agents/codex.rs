@@ -15,7 +15,10 @@
 
 use serde_json::Value;
 
-use super::{cue_for_transition, excerpt, AgentKind, AgentSession, Cue, PlanItem, PlanStatus, SessionStatus, EXCERPT_CHARS};
+use super::{
+    cue_for_transition, excerpt, AgentKind, AgentSession, Cue, PlanItem, PlanStatus, SessionStatus,
+    EXCERPT_CHARS,
+};
 
 /// `notify` 回调的内容。
 #[derive(Debug, Clone, PartialEq)]
@@ -43,7 +46,11 @@ pub fn parse_notify(raw: &str) -> Option<CodexNotify> {
         input_messages: v
             .get("input-messages")
             .and_then(|a| a.as_array())
-            .map(|a| a.iter().filter_map(|m| m.as_str().map(|s| s.to_string())).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|m| m.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default(),
         last_assistant_message: get("last-assistant-message"),
     })
@@ -92,7 +99,9 @@ impl LineBuffer {
         let mut out = Vec::new();
         while let Some(pos) = self.pending.iter().position(|b| *b == b'\n') {
             let line: Vec<u8> = self.pending.drain(..=pos).collect();
-            let text = String::from_utf8_lossy(&line[..line.len() - 1]).trim_end_matches('\r').to_string();
+            let text = String::from_utf8_lossy(&line[..line.len() - 1])
+                .trim_end_matches('\r')
+                .to_string();
             if !text.trim().is_empty() {
                 out.push(text);
             }
@@ -148,7 +157,9 @@ impl CodexTracker {
 
     /// 应用一行 rollout。
     pub fn apply_line(&mut self, line: &str, now: i64) -> Option<Cue> {
-        let Ok(v) = serde_json::from_str::<Value>(line) else { return None };
+        let Ok(v) = serde_json::from_str::<Value>(line) else {
+            return None;
+        };
         let before = self.session.status;
         let ts = v
             .get("timestamp")
@@ -174,7 +185,11 @@ impl CodexTracker {
                         self.hidden = true;
                     }
                 }
-                if payload.get("parent_thread_id").and_then(|p| p.as_str()).is_some() {
+                if payload
+                    .get("parent_thread_id")
+                    .and_then(|p| p.as_str())
+                    .is_some()
+                {
                     self.hidden = true;
                 }
             }
@@ -204,7 +219,10 @@ impl CodexTracker {
                     }
                     match payload.get("error").filter(|e| !e.is_null()) {
                         Some(err) => {
-                            let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("出错");
+                            let msg = err
+                                .get("message")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("出错");
                             s.set_status(SessionStatus::Error, Some(excerpt(msg, 80)));
                         }
                         None => {
@@ -215,7 +233,10 @@ impl CodexTracker {
                 Some("turn_aborted") => {
                     let reason = payload.get("reason").and_then(|r| r.as_str()).unwrap_or("");
                     if let Some(err) = payload.get("error").filter(|e| !e.is_null()) {
-                        let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("出错");
+                        let msg = err
+                            .get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("出错");
                         s.set_status(SessionStatus::Error, Some(excerpt(msg, 80)));
                     } else {
                         match reason {
@@ -235,14 +256,18 @@ impl CodexTracker {
             Some("response_item") => {
                 let ty = payload.get("type").and_then(|t| t.as_str());
                 let name = payload.get("name").and_then(|n| n.as_str());
-                if matches!(ty, Some("function_call") | Some("custom_tool_call")) && name == Some("update_plan") {
+                if matches!(ty, Some("function_call") | Some("custom_tool_call"))
+                    && name == Some("update_plan")
+                {
                     let args = payload
                         .get("arguments")
                         .or_else(|| payload.get("input"))
                         .cloned()
                         .unwrap_or(Value::Null);
                     let args = match args {
-                        Value::String(s) => serde_json::from_str::<Value>(&s).unwrap_or(Value::Null),
+                        Value::String(s) => {
+                            serde_json::from_str::<Value>(&s).unwrap_or(Value::Null)
+                        }
                         other => other,
                     };
                     if let Some(plan) = parse_update_plan(&args) {
@@ -289,8 +314,14 @@ mod tests {
         assert_eq!(n.turn_id, "12345");
         assert_eq!(n.cwd, "/Users/example/project");
         assert_eq!(n.client.as_deref(), Some("codex-tui"));
-        assert_eq!(n.input_messages, vec!["Rename `foo` to `bar` and update the callsites."]);
-        assert_eq!(n.last_assistant_message.as_deref(), Some("Rename complete and verified `cargo build` succeeds."));
+        assert_eq!(
+            n.input_messages,
+            vec!["Rename `foo` to `bar` and update the callsites."]
+        );
+        assert_eq!(
+            n.last_assistant_message.as_deref(),
+            Some("Rename complete and verified `cargo build` succeeds.")
+        );
         assert!(parse_notify(r#"{"type":"something-else"}"#).is_none());
         assert!(parse_notify("garbage").is_none());
     }
@@ -298,7 +329,10 @@ mod tests {
     #[test]
     fn filename_thread_id() {
         assert_eq!(
-            thread_id_from_filename("rollout-2026-11-02T09-15-00-0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b.jsonl").as_deref(),
+            thread_id_from_filename(
+                "rollout-2026-11-02T09-15-00-0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b.jsonl"
+            )
+            .as_deref(),
             Some("0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
         );
         assert_eq!(
@@ -321,8 +355,14 @@ mod tests {
         assert_eq!(s.status, SessionStatus::Done);
         assert_eq!(s.plan.len(), 3);
         assert_eq!(s.plan_progress(), (3, 3));
-        assert_eq!(s.last_prompt.as_deref(), Some("把登录页的按钮改成蓝色，然后跑测试"));
-        assert_eq!(s.last_reply.as_deref(), Some("按钮已改为蓝色，测试全部通过。"));
+        assert_eq!(
+            s.last_prompt.as_deref(),
+            Some("把登录页的按钮改成蓝色，然后跑测试")
+        );
+        assert_eq!(
+            s.last_reply.as_deref(),
+            Some("按钮已改为蓝色，测试全部通过。")
+        );
         assert!(!t.hidden);
         assert_eq!(t.offset as usize, ROLLOUT.len());
     }
@@ -351,7 +391,14 @@ mod tests {
         t.feed(upto.as_bytes(), 0, false);
         assert_eq!(t.session.status, SessionStatus::Running);
         let st: Vec<_> = t.session.plan.iter().map(|p| p.status).collect();
-        assert_eq!(st, vec![PlanStatus::InProgress, PlanStatus::Pending, PlanStatus::Pending]);
+        assert_eq!(
+            st,
+            vec![
+                PlanStatus::InProgress,
+                PlanStatus::Pending,
+                PlanStatus::Pending
+            ]
+        );
         assert_eq!(t.session.plan[0].text, "修改按钮样式");
     }
 
@@ -364,7 +411,10 @@ mod tests {
             0,
         );
         assert_eq!(cue, Some(Cue::Error));
-        assert_eq!(t.session.detail.as_deref(), Some("stream disconnected before completion"));
+        assert_eq!(
+            t.session.detail.as_deref(),
+            Some("stream disconnected before completion")
+        );
 
         t.apply_line(r#"{"timestamp":"2026-11-02T10:00:02.000Z","type":"event_msg","payload":{"type":"turn_started","turn_id":"2"}}"#, 0);
         let cue = t.apply_line(r#"{"timestamp":"2026-11-02T10:00:03.000Z","type":"event_msg","payload":{"type":"turn_aborted","turn_id":"2","reason":"interrupted"}}"#, 0);
@@ -401,6 +451,9 @@ mod tests {
         assert_eq!(buf.pending_len(), 7);
         let mut t = CodexTracker::new("x", 0);
         assert_eq!(t.apply_line("not json", 0), None);
-        assert_eq!(t.apply_line(r#"{"record_type":"response","index":0}"#, 0), None);
+        assert_eq!(
+            t.apply_line(r#"{"record_type":"response","index":0}"#, 0),
+            None
+        );
     }
 }

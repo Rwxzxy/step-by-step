@@ -17,12 +17,15 @@ use super::{is_our_program, HookCommand, InstallError};
 pub const THEN_FLAG: &str = "--then";
 
 fn parse(text: &str) -> Result<DocumentMut, InstallError> {
-    text.parse::<DocumentMut>().map_err(|e| InstallError::BadToml(e.to_string()))
+    text.parse::<DocumentMut>()
+        .map_err(|e| InstallError::BadToml(e.to_string()))
 }
 
 /// 读出当前 notify（字符串数组）。
 fn current_notify(doc: &DocumentMut) -> Result<Option<Vec<String>>, InstallError> {
-    let Some(item) = doc.get("notify") else { return Ok(None) };
+    let Some(item) = doc.get("notify") else {
+        return Ok(None);
+    };
     let arr = item
         .as_array()
         .ok_or_else(|| InstallError::Shape("notify 不是字符串数组".into()))?;
@@ -100,8 +103,12 @@ fn insert_top_level(doc: &mut DocumentMut, v: Value) {
 /// 撤销。
 pub fn uninstall(text: &str) -> Result<String, InstallError> {
     let mut doc = parse(text)?;
-    let Some(argv) = current_notify(&doc)? else { return Ok(text.to_string()) };
-    let Some(original) = chained_original(&argv) else { return Ok(text.to_string()) };
+    let Some(argv) = current_notify(&doc)? else {
+        return Ok(text.to_string());
+    };
+    let Some(original) = chained_original(&argv) else {
+        return Ok(text.to_string());
+    };
     if original.is_empty() {
         doc.remove("notify");
     } else {
@@ -150,8 +157,21 @@ model = "gpt-5.5-mini"
     fn install_into_empty_config() {
         let out = install("", &cmd()).unwrap();
         let doc: DocumentMut = out.parse().unwrap();
-        let argv: Vec<_> = doc["notify"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
-        assert_eq!(argv, vec![cmd().program, "codex-notify".into(), "--endpoint".into(), cmd().endpoint_file]);
+        let argv: Vec<_> = doc["notify"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            argv,
+            vec![
+                cmd().program,
+                "codex-notify".into(),
+                "--endpoint".into(),
+                cmd().endpoint_file
+            ]
+        );
         assert!(is_installed(&out));
         assert_eq!(uninstall(&out).unwrap().trim(), "");
     }
@@ -163,10 +183,21 @@ model = "gpt-5.5-mini"
         assert!(out.contains("# 完成时弹通知"));
         assert!(out.contains("[mcp_servers.docs]"));
         let doc: DocumentMut = out.parse().unwrap();
-        let argv: Vec<_> = doc["notify"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
-        assert_eq!(&argv[4..], &["--then".to_string(), "notify-send".into(), "Codex".into()]);
+        let argv: Vec<_> = doc["notify"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            &argv[4..],
+            &["--then".to_string(), "notify-send".into(), "Codex".into()]
+        );
         assert_eq!(doc["model"].as_str(), Some("gpt-5.5-codex"));
-        assert_eq!(doc["mcp_servers"]["docs"]["command"].as_str(), Some("docs-mcp"));
+        assert_eq!(
+            doc["mcp_servers"]["docs"]["command"].as_str(),
+            Some("docs-mcp")
+        );
         // notify 仍在顶层，不会掉进 [profiles.fast]。
         assert!(doc["profiles"]["fast"].get("notify").is_none());
     }
@@ -203,14 +234,23 @@ model = "gpt-5.5-mini"
 
     #[test]
     fn rejects_bad_config() {
-        assert!(matches!(install("model = ", &cmd()), Err(InstallError::BadToml(_))));
-        assert!(matches!(install("notify = \"oops\"", &cmd()), Err(InstallError::Shape(_))));
+        assert!(matches!(
+            install("model = ", &cmd()),
+            Err(InstallError::BadToml(_))
+        ));
+        assert!(matches!(
+            install("notify = \"oops\"", &cmd()),
+            Err(InstallError::Shape(_))
+        ));
     }
 
     #[test]
     fn chained_original_parsing() {
         let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(chained_original(&v(&["/a/steppy-hook", "codex-notify"])), Some(vec![]));
+        assert_eq!(
+            chained_original(&v(&["/a/steppy-hook", "codex-notify"])),
+            Some(vec![])
+        );
         assert_eq!(
             chained_original(&v(&["/a/steppy-hook", "codex-notify", "--then", "x", "y"])),
             Some(v(&["x", "y"]))

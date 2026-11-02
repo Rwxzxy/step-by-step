@@ -61,7 +61,11 @@ pub fn export(records: &[&EventRecord], now: DateTime<Utc>) -> String {
 }
 
 fn escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace(';', "\\;").replace(',', "\\,").replace("\r\n", "\\n").replace('\n', "\\n")
+    s.replace('\\', "\\\\")
+        .replace(';', "\\;")
+        .replace(',', "\\,")
+        .replace("\r\n", "\\n")
+        .replace('\n', "\\n")
 }
 
 fn unescape(s: &str) -> String {
@@ -143,20 +147,34 @@ fn parse_prop(line: &str) -> Option<Prop> {
     let params = parts
         .filter_map(|p| {
             let (k, v) = p.split_once('=')?;
-            Some((k.trim().to_ascii_uppercase(), v.trim().trim_matches('"').to_string()))
+            Some((
+                k.trim().to_ascii_uppercase(),
+                v.trim().trim_matches('"').to_string(),
+            ))
         })
         .collect();
-    Some(Prop { name, params, value: value.to_string() })
+    Some(Prop {
+        name,
+        params,
+        value: value.to_string(),
+    })
 }
 
 fn param<'a>(p: &'a Prop, key: &str) -> Option<&'a str> {
-    p.params.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    p.params
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.as_str())
 }
 
 /// 解析日期时间属性，返回 (本地时间, 是否全天)。
-fn parse_dt(p: &Prop, to_local: &dyn Fn(DateTime<Utc>) -> NaiveDateTime) -> Option<(NaiveDateTime, bool)> {
+fn parse_dt(
+    p: &Prop,
+    to_local: &dyn Fn(DateTime<Utc>) -> NaiveDateTime,
+) -> Option<(NaiveDateTime, bool)> {
     let v = p.value.trim();
-    if param(p, "VALUE") == Some("DATE") || (v.len() == 8 && v.chars().all(|c| c.is_ascii_digit())) {
+    if param(p, "VALUE") == Some("DATE") || (v.len() == 8 && v.chars().all(|c| c.is_ascii_digit()))
+    {
         let d = NaiveDate::parse_from_str(v, "%Y%m%d").ok()?;
         return Some((d.and_time(NaiveTime::MIN), true));
     }
@@ -223,9 +241,15 @@ fn unfold(text: &str) -> Vec<String> {
 }
 
 /// 导入 .ics。`to_local` 把 UTC 时间换成本地浮动时间。
-pub fn import(text: &str, to_local: &dyn Fn(DateTime<Utc>) -> NaiveDateTime) -> Result<Vec<ImportedEvent>, IcsError> {
+pub fn import(
+    text: &str,
+    to_local: &dyn Fn(DateTime<Utc>) -> NaiveDateTime,
+) -> Result<Vec<ImportedEvent>, IcsError> {
     let lines = unfold(text.trim_start_matches('\u{feff}'));
-    if !lines.iter().any(|l| l.eq_ignore_ascii_case("BEGIN:VCALENDAR")) {
+    if !lines
+        .iter()
+        .any(|l| l.eq_ignore_ascii_case("BEGIN:VCALENDAR"))
+    {
         return Err(IcsError::NotCalendar);
     }
     let mut out = Vec::new();
@@ -266,7 +290,10 @@ pub fn import(text: &str, to_local: &dyn Fn(DateTime<Utc>) -> NaiveDateTime) -> 
         }
         let Some(p) = parse_prop(&line) else { continue };
         if in_alarm {
-            if p.name == "TRIGGER" && param(&p, "VALUE") != Some("DATE-TIME") && param(&p, "RELATED") != Some("END") {
+            if p.name == "TRIGGER"
+                && param(&p, "VALUE") != Some("DATE-TIME")
+                && param(&p, "RELATED") != Some("END")
+            {
                 if let Some(m) = parse_duration_min(&p.value) {
                     // 取最早的一个提醒。
                     let before = (-m).max(0);
@@ -280,9 +307,15 @@ pub fn import(text: &str, to_local: &dyn Fn(DateTime<Utc>) -> NaiveDateTime) -> 
     Ok(out)
 }
 
-fn build_event(props: &[Prop], alarm: Option<i64>, to_local: &dyn Fn(DateTime<Utc>) -> NaiveDateTime) -> Option<ImportedEvent> {
+fn build_event(
+    props: &[Prop],
+    alarm: Option<i64>,
+    to_local: &dyn Fn(DateTime<Utc>) -> NaiveDateTime,
+) -> Option<ImportedEvent> {
     let get = |n: &str| props.iter().find(|p| p.name == n);
-    let uid = get("UID").map(|p| p.value.trim().to_string()).unwrap_or_default();
+    let uid = get("UID")
+        .map(|p| p.value.trim().to_string())
+        .unwrap_or_default();
     let (start, all_day) = parse_dt(get("DTSTART")?, to_local)?;
     let end = match get("DTEND").and_then(|p| parse_dt(p, to_local)) {
         Some((e, _)) => e,
@@ -292,8 +325,12 @@ fn build_event(props: &[Prop], alarm: Option<i64>, to_local: &dyn Fn(DateTime<Ut
             None => start + Duration::minutes(30),
         },
     };
-    let title = get("SUMMARY").map(|p| unescape(&p.value)).unwrap_or_else(|| "（无标题）".into());
-    let mut notes = get("DESCRIPTION").map(|p| unescape(&p.value)).unwrap_or_default();
+    let title = get("SUMMARY")
+        .map(|p| unescape(&p.value))
+        .unwrap_or_else(|| "（无标题）".into());
+    let mut notes = get("DESCRIPTION")
+        .map(|p| unescape(&p.value))
+        .unwrap_or_default();
     let repeat = match get("RRULE") {
         None => Repeat::None,
         Some(p) => match parse_rrule(&p.value) {
@@ -309,7 +346,10 @@ fn build_event(props: &[Prop], alarm: Option<i64>, to_local: &dyn Fn(DateTime<Ut
     };
     let id = match uid.strip_suffix("@steppy") {
         Some(own) if !own.is_empty() => own.to_string(),
-        _ if !uid.is_empty() => uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, format!("ics:{uid}").as_bytes()).to_string(),
+        _ if !uid.is_empty() => {
+            uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, format!("ics:{uid}").as_bytes())
+                .to_string()
+        }
         _ => uuid::Uuid::new_v4().to_string(),
     };
     Some(ImportedEvent {
@@ -369,13 +409,18 @@ mod tests {
     }
 
     fn dt(y: i32, m: u32, d: u32, h: u32, mi: u32) -> NaiveDateTime {
-        NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, mi, 0).unwrap()
+        NaiveDate::from_ymd_opt(y, m, d)
+            .unwrap()
+            .and_hms_opt(h, mi, 0)
+            .unwrap()
     }
 
     #[test]
     fn roundtrip() {
         let mut long = EventData {
-            title: "周会; 讨论, 季度计划 \\ 很长很长很长很长很长很长很长很长很长很长很长很长很长的标题".into(),
+            title:
+                "周会; 讨论, 季度计划 \\ 很长很长很长很长很长很长很长很长很长很长很长很长很长的标题"
+                    .into(),
             notes: "第一行\n第二行".into(),
             all_day: false,
             start: dt(2026, 11, 2, 9, 0),
@@ -392,7 +437,10 @@ mod tests {
         let mut c = EventRecord::create("id-c", "A", a.data.clone().unwrap(), 0);
         c.delete("A", 1);
         let text = export(&[&a, &b, &c], Utc::now());
-        assert!(text.lines().all(|l| l.len() <= 76), "折行后每行不超过 75 字节");
+        assert!(
+            text.lines().all(|l| l.len() <= 76),
+            "折行后每行不超过 75 字节"
+        );
         assert!(text.contains("\r\n"));
         let imported = import(&text, &utc8).unwrap();
         assert_eq!(imported.len(), 2, "墓碑不导出");

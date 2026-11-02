@@ -145,7 +145,9 @@ fn xorshift(state: &mut u64) -> u64 {
 
 /// 在若干显示器上找到 `cx` 所在的那一块。
 fn screen_at(screens: &[Screen], cx: f64) -> Option<&Screen> {
-    screens.iter().find(|s| cx >= s.work.x as f64 && cx < s.work.right() as f64)
+    screens
+        .iter()
+        .find(|s| cx >= s.work.x as f64 && cx < s.work.right() as f64)
 }
 
 /// 所有显示器拼起来的左右边界。
@@ -203,7 +205,12 @@ impl PetBrain {
     /// 放到第一块显示器（或指定横坐标）的地面上。
     pub fn place(&mut self, screens: &[Screen], cx: Option<f64>, win_w: f64, win_h: f64) {
         let target = cx.unwrap_or_else(|| {
-            let s = screens.first().map(|s| s.work).unwrap_or(Rect { x: 0, y: 0, w: 1920, h: 1080 });
+            let s = screens.first().map(|s| s.work).unwrap_or(Rect {
+                x: 0,
+                y: 0,
+                w: 1920,
+                h: 1080,
+            });
             s.right() as f64 - win_w * 1.5
         });
         self.x = target - win_w / 2.0;
@@ -228,7 +235,10 @@ impl PetBrain {
     }
 
     pub fn is_busy_moving(&self) -> bool {
-        matches!(self.mode, Mode::Drag | Mode::Fall { .. } | Mode::Exit { .. } | Mode::Enter { .. } | Mode::Hidden)
+        matches!(
+            self.mode,
+            Mode::Drag | Mode::Fall { .. } | Mode::Exit { .. } | Mode::Enter { .. } | Mode::Hidden
+        )
     }
 
     /// 做出一个反应动作（开心 / 举手 / 着急 / 看日历），持续 `duration_ms`。
@@ -238,7 +248,10 @@ impl PetBrain {
             return;
         }
         self.last_active_ms = now;
-        self.mode = Mode::React { anim, until: now + duration_ms };
+        self.mode = Mode::React {
+            anim,
+            until: now + duration_ms,
+        };
     }
 
     /// 结束当前的反应动作（例如等待状态解除了）。
@@ -339,7 +352,13 @@ impl PetBrain {
         self.place(screens, None, win_w, win_h);
     }
 
-    fn pick_next(&mut self, now: i64, screens: &[Screen], win_w: f64, allow_exit: &dyn Fn(Side) -> bool) {
+    fn pick_next(
+        &mut self,
+        now: i64,
+        screens: &[Screen],
+        win_w: f64,
+        allow_exit: &dyn Fn(Side) -> bool,
+    ) {
         let idle_for = now - self.last_active_ms;
         let r = self.rand01();
         if idle_for > self.tuning.sleep_after_ms && r < 0.5 {
@@ -351,8 +370,14 @@ impl PetBrain {
             let (left, right) = desktop_bounds(screens);
             let cx = self.body_center(win_w);
             // 偶尔自己去串门。
-            if self.tuning.wander_exit_chance > 0.0 && self.rand01() < self.tuning.wander_exit_chance {
-                let side = if self.rand01() < 0.5 { Side::Left } else { Side::Right };
+            if self.tuning.wander_exit_chance > 0.0
+                && self.rand01() < self.tuning.wander_exit_chance
+            {
+                let side = if self.rand01() < 0.5 {
+                    Side::Left
+                } else {
+                    Side::Right
+                };
                 if allow_exit(side) {
                     self.request_exit(side);
                     return;
@@ -363,7 +388,10 @@ impl PetBrain {
             let dir = if self.rand01() < 0.5 { -1.0 } else { 1.0 };
             let margin = win_w * 0.5;
             let target = (cx + dir * span).clamp(left as f64 + margin, right as f64 - margin);
-            self.mode = Mode::Walk { target, until: now + 30_000 };
+            self.mode = Mode::Walk {
+                target,
+                until: now + 30_000,
+            };
         } else {
             let d = self.rand_range(2_500, 8_000);
             self.mode = Mode::Idle { until: now + d };
@@ -381,6 +409,9 @@ impl PetBrain {
         allow_exit: &dyn Fn(Side) -> bool,
     ) -> Frame {
         let dt = (dt_ms.clamp(0, 200)) as f64 / 1000.0;
+        if self.last_active_ms == 0 {
+            self.last_active_ms = now;
+        }
         let mut event = None;
         let cx = self.body_center(win_w);
         let scale = self.scale_at(screens, cx);
@@ -431,7 +462,11 @@ impl PetBrain {
                 self.facing = side;
                 self.x += dir * speed * dt;
                 // 地面高度按边缘那块屏计算，走出去时不会掉下来。
-                let edge_cx = if side == Side::Left { left as f64 + 1.0 } else { right as f64 - 1.0 };
+                let edge_cx = if side == Side::Left {
+                    left as f64 + 1.0
+                } else {
+                    right as f64 - 1.0
+                };
                 self.y = self.ground_y(screens, edge_cx, win_h);
                 let gone = match side {
                     Side::Left => self.x + win_w * self.tuning.body_right <= left as f64,
@@ -455,7 +490,9 @@ impl PetBrain {
                     self.x += dir * step;
                 }
                 let (left, right) = desktop_bounds(screens);
-                let probe = self.body_center(win_w).clamp(left as f64 + 1.0, right as f64 - 1.0);
+                let probe = self
+                    .body_center(win_w)
+                    .clamp(left as f64 + 1.0, right as f64 - 1.0);
                 self.y = self.ground_y(screens, probe, win_h);
             }
             Mode::Fall { vy } => {
@@ -493,13 +530,34 @@ mod tests {
     fn two_screens() -> Vec<Screen> {
         vec![
             // 主屏 1920x1080，任务栏 48 像素。
-            Screen { work: Rect { x: 0, y: 0, w: 1920, h: 1032 }, scale: 1.0 },
+            Screen {
+                work: Rect {
+                    x: 0,
+                    y: 0,
+                    w: 1920,
+                    h: 1032,
+                },
+                scale: 1.0,
+            },
             // 右边一块 4K 200% 缩放，位置更低。
-            Screen { work: Rect { x: 1920, y: 200, w: 3840, h: 2100 }, scale: 2.0 },
+            Screen {
+                work: Rect {
+                    x: 1920,
+                    y: 200,
+                    w: 3840,
+                    h: 2100,
+                },
+                scale: 2.0,
+            },
         ]
     }
 
-    fn run(b: &mut PetBrain, screens: &[Screen], ms: i64, allow: &dyn Fn(Side) -> bool) -> Vec<Frame> {
+    fn run(
+        b: &mut PetBrain,
+        screens: &[Screen],
+        ms: i64,
+        allow: &dyn Fn(Side) -> bool,
+    ) -> Vec<Frame> {
         let mut frames = Vec::new();
         let mut now = 1_000_000;
         for _ in 0..(ms / 33) {
@@ -547,7 +605,9 @@ mod tests {
         b.place(&s, Some(300.0), W, H);
         b.request_exit(Side::Left);
         let frames = run(&mut b, &s, 20_000, &|side| side == Side::Left);
-        let exit = frames.iter().position(|f| f.event == Some(BrainEvent::Exited(Side::Left)));
+        let exit = frames
+            .iter()
+            .position(|f| f.event == Some(BrainEvent::Exited(Side::Left)));
         assert!(exit.is_some());
         assert!(!frames.last().unwrap().visible);
         assert!(b.is_hidden());
@@ -572,7 +632,9 @@ mod tests {
         b.drag_to(5700.0, 300.0);
         b.end_drag(&s, W, |side| side == Side::Right);
         let frames = run(&mut b, &s, 5_000, &|side| side == Side::Right);
-        assert!(frames.iter().any(|f| f.event == Some(BrainEvent::Exited(Side::Right))));
+        assert!(frames
+            .iter()
+            .any(|f| f.event == Some(BrainEvent::Exited(Side::Right))));
     }
 
     #[test]
@@ -584,7 +646,10 @@ mod tests {
         assert_eq!(b.facing, Side::Left);
         let frames = run(&mut b, &s, 20_000, &|_| false);
         assert!(frames.iter().any(|f| f.event == Some(BrainEvent::Entered)));
-        let entered = frames.iter().position(|f| f.event == Some(BrainEvent::Entered)).unwrap();
+        let entered = frames
+            .iter()
+            .position(|f| f.event == Some(BrainEvent::Entered))
+            .unwrap();
         assert!(frames[entered].visible);
         // 走进来的地方在第二块屏的地面上。
         assert_eq!(frames[entered].y, 2300 - 200);

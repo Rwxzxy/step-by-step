@@ -77,7 +77,10 @@ pub mod framing {
 
     pub fn write_frame<W: Write>(w: &mut W, body: &[u8]) -> std::io::Result<()> {
         if body.len() > super::MAX_FRAME {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "frame too large"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "frame too large",
+            ));
         }
         w.write_all(&(body.len() as u32).to_be_bytes())?;
         w.write_all(body)?;
@@ -89,7 +92,10 @@ pub mod framing {
         r.read_exact(&mut len)?;
         let len = u32::from_be_bytes(len) as usize;
         if len > super::MAX_FRAME {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "frame too large"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "frame too large",
+            ));
         }
         let mut buf = vec![0u8; len];
         r.read_exact(&mut buf)?;

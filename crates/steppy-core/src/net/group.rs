@@ -76,7 +76,11 @@ pub struct GroupState {
 const KEEP_KEYS: usize = 3;
 
 fn new_key(epoch: u32, holders: Vec<NodeId>) -> GroupKey {
-    GroupKey { epoch, key: hex::encode(random_bytes::<32>()), holders }
+    GroupKey {
+        epoch,
+        key: hex::encode(random_bytes::<32>()),
+        holders,
+    }
 }
 
 impl GroupState {
@@ -100,7 +104,11 @@ impl GroupState {
             group_id: hex::encode(random_bytes::<8>()),
             members,
             keys: vec![new_key(0, vec![me.node_id.clone()])],
-            layout: Layout { order: vec![me.node_id.clone()], version: 1, modified_by: me.node_id.clone() },
+            layout: Layout {
+                order: vec![me.node_id.clone()],
+                version: 1,
+                modified_by: me.node_id.clone(),
+            },
         }
     }
 
@@ -133,7 +141,10 @@ impl GroupState {
             }
             Some(existing) => {
                 if m.info_version > existing.info_version {
-                    *existing = Member { removed: false, ..m };
+                    *existing = Member {
+                        removed: false,
+                        ..m
+                    };
                 }
             }
             None => {
@@ -147,7 +158,13 @@ impl GroupState {
     }
 
     /// 更新自己的资料（机器名、主人名字、颜色）。
-    pub fn update_member_info(&mut self, node: &str, machine_name: &str, owner_name: &str, hue: u16) -> bool {
+    pub fn update_member_info(
+        &mut self,
+        node: &str,
+        machine_name: &str,
+        owner_name: &str,
+        hue: u16,
+    ) -> bool {
         if let Some(m) = self.members.get_mut(node) {
             if m.machine_name != machine_name || m.owner_name != owner_name || m.hue != hue {
                 m.machine_name = machine_name.into();
@@ -192,14 +209,24 @@ impl GroupState {
 
     /// 当前密钥是否可能被已移除的成员知道。
     pub fn needs_rekey(&self) -> bool {
-        self.current_key().holders.iter().any(|h| !self.is_active_member(h))
+        self.current_key()
+            .holders
+            .iter()
+            .any(|h| !self.is_active_member(h))
     }
 
     /// 设置左右排列。
     pub fn set_layout(&mut self, order: Vec<NodeId>, by: &str) {
-        let order: Vec<NodeId> = order.into_iter().filter(|n| self.is_active_member(n)).collect();
+        let order: Vec<NodeId> = order
+            .into_iter()
+            .filter(|n| self.is_active_member(n))
+            .collect();
         if order != self.layout.order {
-            self.layout = Layout { order, version: self.layout.version + 1, modified_by: by.to_string() };
+            self.layout = Layout {
+                order,
+                version: self.layout.version + 1,
+                modified_by: by.to_string(),
+            };
         }
     }
 
@@ -208,7 +235,11 @@ impl GroupState {
         let order = &self.layout.order;
         match order.iter().position(|n| n == node) {
             Some(i) => (
-                if i > 0 { Some(order[i - 1].clone()) } else { None },
+                if i > 0 {
+                    Some(order[i - 1].clone())
+                } else {
+                    None
+                },
                 order.get(i + 1).cloned(),
             ),
             None => (None, None),
@@ -251,7 +282,12 @@ impl GroupState {
             self.layout = l.clone();
         }
         // 排列里去掉已移除的成员、补上新成员。
-        let removed: Vec<NodeId> = self.members.values().filter(|m| m.removed).map(|m| m.node_id.clone()).collect();
+        let removed: Vec<NodeId> = self
+            .members
+            .values()
+            .filter(|m| m.removed)
+            .map(|m| m.node_id.clone())
+            .collect();
         self.layout.order.retain(|n| !removed.contains(n));
         for m in self.members.values() {
             if !m.removed && !self.layout.order.contains(&m.node_id) {
@@ -288,8 +324,14 @@ mod tests {
         assert_eq!(g.epoch(), 0);
         g.add_member(member(&b, "B"));
         g.add_member(member(&c, "C"));
-        assert_eq!(g.layout.order, vec![a.node_id.clone(), b.node_id.clone(), c.node_id.clone()]);
-        assert_eq!(g.neighbors(&b.node_id), (Some(a.node_id.clone()), Some(c.node_id.clone())));
+        assert_eq!(
+            g.layout.order,
+            vec![a.node_id.clone(), b.node_id.clone(), c.node_id.clone()]
+        );
+        assert_eq!(
+            g.neighbors(&b.node_id),
+            (Some(a.node_id.clone()), Some(c.node_id.clone()))
+        );
         let old_key = g.current_key().key.clone();
         let e = g.remove_member(&b.node_id, &a.node_id).unwrap();
         assert_eq!(e, 1);

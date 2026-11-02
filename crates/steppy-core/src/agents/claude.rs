@@ -20,7 +20,10 @@ use std::io::BufRead;
 
 use serde_json::Value;
 
-use super::{cue_for_transition, excerpt, AgentKind, AgentSession, Cue, PlanItem, PlanStatus, SessionStatus, EXCERPT_CHARS};
+use super::{
+    cue_for_transition, excerpt, AgentKind, AgentSession, Cue, PlanItem, PlanStatus, SessionStatus,
+    EXCERPT_CHARS,
+};
 
 /// 解析后的 hook 事件。
 #[derive(Debug, Clone, PartialEq)]
@@ -167,12 +170,17 @@ pub fn wants_transcript(hook: &ClaudeHook, session: &AgentSession) -> bool {
     match &hook.event {
         ClaudeEvent::SessionStart { source, .. } => source != "startup" && source != "clear",
         // TaskUpdate 引用了我们还不认识的 id（例如宠物启动前创建的任务）。
-        ClaudeEvent::PostToolUse { tool_name, tool_input, .. } if tool_name == "TaskUpdate" => {
-            match task_id_of(tool_input) {
-                Some(id) => !session.plan.iter().any(|p| p.id.as_deref() == Some(id.as_str())),
-                None => false,
-            }
-        }
+        ClaudeEvent::PostToolUse {
+            tool_name,
+            tool_input,
+            ..
+        } if tool_name == "TaskUpdate" => match task_id_of(tool_input) {
+            Some(id) => !session
+                .plan
+                .iter()
+                .any(|p| p.id.as_deref() == Some(id.as_str())),
+            None => false,
+        },
         ClaudeEvent::Stop { .. } => session.plan.is_empty(),
         _ => false,
     }
@@ -236,19 +244,22 @@ pub fn plan_from_markdown(md: &str) -> Vec<PlanItem> {
         } else {
             let digits = t.chars().take_while(|c| c.is_ascii_digit()).count();
             if digits > 0 {
-                t[digits..].strip_prefix(". ").or_else(|| t[digits..].strip_prefix(") "))
+                t[digits..]
+                    .strip_prefix(". ")
+                    .or_else(|| t[digits..].strip_prefix(") "))
             } else {
                 None
             }
         };
         if let Some(r) = rest {
-            let (status, text) = if let Some(x) = r.strip_prefix("[x] ").or_else(|| r.strip_prefix("[X] ")) {
-                (PlanStatus::Completed, x)
-            } else if let Some(x) = r.strip_prefix("[ ] ") {
-                (PlanStatus::Pending, x)
-            } else {
-                (PlanStatus::Pending, r)
-            };
+            let (status, text) =
+                if let Some(x) = r.strip_prefix("[x] ").or_else(|| r.strip_prefix("[X] ")) {
+                    (PlanStatus::Completed, x)
+                } else if let Some(x) = r.strip_prefix("[ ] ") {
+                    (PlanStatus::Pending, x)
+                } else {
+                    (PlanStatus::Pending, r)
+                };
             let text = text.trim();
             if !text.is_empty() {
                 items.push(PlanItem::new(text, status));
@@ -259,7 +270,13 @@ pub fn plan_from_markdown(md: &str) -> Vec<PlanItem> {
 }
 
 /// 任务工具的增量更新。
-fn upsert_task(plan: &mut Vec<PlanItem>, id: &str, subject: Option<String>, status: Option<PlanStatus>, active: Option<String>) {
+fn upsert_task(
+    plan: &mut Vec<PlanItem>,
+    id: &str,
+    subject: Option<String>,
+    status: Option<PlanStatus>,
+    active: Option<String>,
+) {
     if let Some(item) = plan.iter_mut().find(|p| p.id.as_deref() == Some(id)) {
         if let Some(sub) = subject {
             if !sub.is_empty() {
@@ -298,7 +315,12 @@ fn apply_task_update(plan: &mut Vec<PlanItem>, input: &Value) {
     );
 }
 
-fn apply_plan_tool(plan: &mut Vec<PlanItem>, tool_name: &str, input: &Value, response: &Value) -> bool {
+fn apply_plan_tool(
+    plan: &mut Vec<PlanItem>,
+    tool_name: &str,
+    input: &Value,
+    response: &Value,
+) -> bool {
     match tool_name {
         "TodoWrite" => {
             if let Some(p) = plan_from_todos(input) {
@@ -309,12 +331,18 @@ fn apply_plan_tool(plan: &mut Vec<PlanItem>, tool_name: &str, input: &Value, res
         }
         "TaskCreate" => {
             let subject = str_field(input, &["subject"]).or_else(|| {
-                response.get("task").and_then(|t| str_field(t, &["subject"]))
+                response
+                    .get("task")
+                    .and_then(|t| str_field(t, &["subject"]))
             });
             let id = response
                 .get("task")
                 .and_then(|t| t.get("id"))
-                .and_then(|i| i.as_str().map(|s| s.to_string()).or_else(|| i.as_i64().map(|n| n.to_string())));
+                .and_then(|i| {
+                    i.as_str()
+                        .map(|s| s.to_string())
+                        .or_else(|| i.as_i64().map(|n| n.to_string()))
+                });
             let active = str_field(input, &["activeForm", "active_form"]);
             match (id, subject) {
                 (Some(id), sub) => upsert_task(plan, &id, sub, None, active),
@@ -359,7 +387,11 @@ pub fn apply_hook(session: &mut AgentSession, hook: &ClaudeHook, now: i64) -> Op
     }
     session.updated_ms = now;
     match &hook.event {
-        ClaudeEvent::SessionStart { source, session_title, .. } => {
+        ClaudeEvent::SessionStart {
+            source,
+            session_title,
+            ..
+        } => {
             if session_title.is_some() {
                 session.title = session_title.clone();
             }
@@ -371,7 +403,10 @@ pub fn apply_hook(session: &mut AgentSession, hook: &ClaudeHook, now: i64) -> Op
                 session.set_status(SessionStatus::Idle, None);
             }
         }
-        ClaudeEvent::UserPromptSubmit { prompt, session_title } => {
+        ClaudeEvent::UserPromptSubmit {
+            prompt,
+            session_title,
+        } => {
             if session_title.is_some() {
                 session.title = session_title.clone();
             }
@@ -380,17 +415,32 @@ pub fn apply_hook(session: &mut AgentSession, hook: &ClaudeHook, now: i64) -> Op
             }
             session.set_status(SessionStatus::Running, None);
         }
-        ClaudeEvent::PostToolUse { tool_name, tool_input, tool_response } => {
+        ClaudeEvent::PostToolUse {
+            tool_name,
+            tool_input,
+            tool_response,
+        } => {
             apply_plan_tool(&mut session.plan, tool_name, tool_input, tool_response);
             session.set_status(SessionStatus::Running, None);
         }
         ClaudeEvent::PermissionRequest { tool_name } => {
-            session.set_status(SessionStatus::Waiting, Some(format!("等待批准：{tool_name}")));
+            session.set_status(
+                SessionStatus::Waiting,
+                Some(format!("等待批准：{tool_name}")),
+            );
         }
-        ClaudeEvent::Notification { notification_type, .. } => match notification_type.as_str() {
+        ClaudeEvent::Notification {
+            notification_type, ..
+        } => match notification_type.as_str() {
             "permission_prompt" => {
-                let detail = session.detail.clone().filter(|_| session.status == SessionStatus::Waiting);
-                session.set_status(SessionStatus::Waiting, detail.or_else(|| Some("等待批准".into())));
+                let detail = session
+                    .detail
+                    .clone()
+                    .filter(|_| session.status == SessionStatus::Waiting);
+                session.set_status(
+                    SessionStatus::Waiting,
+                    detail.or_else(|| Some("等待批准".into())),
+                );
             }
             "elicitation_dialog" | "elicitation_url_dialog" | "agent_needs_input" => {
                 session.set_status(SessionStatus::Waiting, Some("等待输入".into()));
@@ -402,22 +452,41 @@ pub fn apply_hook(session: &mut AgentSession, hook: &ClaudeHook, now: i64) -> Op
         },
         ClaudeEvent::TaskCreated { task_id, subject } => {
             if !task_id.is_empty() {
-                upsert_task(&mut session.plan, task_id, Some(subject.clone()), None, None);
+                upsert_task(
+                    &mut session.plan,
+                    task_id,
+                    Some(subject.clone()),
+                    None,
+                    None,
+                );
             }
         }
         ClaudeEvent::TaskCompleted { task_id, subject } => {
             if !task_id.is_empty() {
-                upsert_task(&mut session.plan, task_id, Some(subject.clone()), Some(PlanStatus::Completed), None);
+                upsert_task(
+                    &mut session.plan,
+                    task_id,
+                    Some(subject.clone()),
+                    Some(PlanStatus::Completed),
+                    None,
+                );
             }
         }
-        ClaudeEvent::Stop { last_assistant_message, background_tasks } => {
+        ClaudeEvent::Stop {
+            last_assistant_message,
+            background_tasks,
+        } => {
             if let Some(m) = last_assistant_message {
                 session.last_reply = Some(excerpt(m, EXCERPT_CHARS));
             }
-            let detail = (*background_tasks > 0).then(|| format!("还有 {background_tasks} 个后台任务"));
+            let detail =
+                (*background_tasks > 0).then(|| format!("还有 {background_tasks} 个后台任务"));
             session.set_status(SessionStatus::Done, detail);
         }
-        ClaudeEvent::StopFailure { error, error_details } => {
+        ClaudeEvent::StopFailure {
+            error,
+            error_details,
+        } => {
             let detail = match error_details {
                 Some(d) if !d.is_empty() => format!("{error}：{}", excerpt(d, 80)),
                 _ => error.clone(),
@@ -434,7 +503,12 @@ pub fn apply_hook(session: &mut AgentSession, hook: &ClaudeHook, now: i64) -> Op
 
 /// 为新的 hook 创建会话。
 pub fn new_session(hook: &ClaudeHook, now: i64) -> AgentSession {
-    AgentSession::new(AgentKind::Claude, hook.session_id.clone(), hook.cwd.clone(), now)
+    AgentSession::new(
+        AgentKind::Claude,
+        hook.session_id.clone(),
+        hook.cwd.clone(),
+        now,
+    )
 }
 
 /// 从 transcript（JSONL）重建计划清单。
@@ -452,8 +526,14 @@ pub fn plan_from_transcript<R: BufRead>(reader: R) -> Option<Vec<PlanItem>> {
         if line.trim().is_empty() {
             continue;
         }
-        let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
-        let Some(content) = v.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_array()) else {
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let Some(content) = v
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array())
+        else {
             continue;
         };
         for block in content {
@@ -474,7 +554,9 @@ pub fn plan_from_transcript<R: BufRead>(reader: R) -> Option<Vec<PlanItem>> {
                     }
                 }
                 Some("tool_result") => {
-                    let Some(use_id) = block.get("tool_use_id").and_then(|i| i.as_str()) else { continue };
+                    let Some(use_id) = block.get("tool_use_id").and_then(|i| i.as_str()) else {
+                        continue;
+                    };
                     if let Some(input) = pending_creates.remove(use_id) {
                         if block.get("is_error").and_then(|e| e.as_bool()) == Some(true) {
                             continue;
@@ -508,9 +590,12 @@ mod tests {
     const STOP: &str = include_str!("../../tests/fixtures/claude/stop.json");
     const STOP_FAILURE: &str = include_str!("../../tests/fixtures/claude/stop_failure.json");
     const SESSION_END: &str = include_str!("../../tests/fixtures/claude/session_end.json");
-    const TODO_WRITE: &str = include_str!("../../tests/fixtures/claude/post_tool_use_todowrite.json");
-    const TASK_CREATE: &str = include_str!("../../tests/fixtures/claude/post_tool_use_task_create.json");
-    const TASK_UPDATE: &str = include_str!("../../tests/fixtures/claude/post_tool_use_task_update.json");
+    const TODO_WRITE: &str =
+        include_str!("../../tests/fixtures/claude/post_tool_use_todowrite.json");
+    const TASK_CREATE: &str =
+        include_str!("../../tests/fixtures/claude/post_tool_use_task_create.json");
+    const TASK_UPDATE: &str =
+        include_str!("../../tests/fixtures/claude/post_tool_use_task_update.json");
     const TRANSCRIPT: &str = include_str!("../../tests/fixtures/claude/transcript.jsonl");
 
     #[test]
@@ -519,7 +604,11 @@ mod tests {
         assert_eq!(h.session_id, "abc123");
         assert_eq!(
             h.event,
-            ClaudeEvent::SessionStart { source: "resume".into(), model: Some("claude-opus-5".into()), session_title: None }
+            ClaudeEvent::SessionStart {
+                source: "resume".into(),
+                model: Some("claude-opus-5".into()),
+                session_title: None
+            }
         );
         assert!(h.transcript_path.unwrap().ends_with(".jsonl"));
 
@@ -527,14 +616,21 @@ mod tests {
         assert_eq!(h.permission_mode.as_deref(), Some("default"));
         match h.event {
             ClaudeEvent::UserPromptSubmit { prompt, .. } => {
-                assert_eq!(prompt, "Write a function to calculate the factorial of a number")
+                assert_eq!(
+                    prompt,
+                    "Write a function to calculate the factorial of a number"
+                )
             }
             e => panic!("{e:?}"),
         }
 
         let h = parse_hook(POST_TOOL_USE).unwrap();
         match h.event {
-            ClaudeEvent::PostToolUse { tool_name, tool_response, .. } => {
+            ClaudeEvent::PostToolUse {
+                tool_name,
+                tool_response,
+                ..
+            } => {
                 assert_eq!(tool_name, "Write");
                 assert_eq!(tool_response["type"], "create");
             }
@@ -542,7 +638,12 @@ mod tests {
         }
 
         let h = parse_hook(PERMISSION).unwrap();
-        assert_eq!(h.event, ClaudeEvent::PermissionRequest { tool_name: "Bash".into() });
+        assert_eq!(
+            h.event,
+            ClaudeEvent::PermissionRequest {
+                tool_name: "Bash".into()
+            }
+        );
 
         let h = parse_hook(NOTIFICATION).unwrap();
         assert_eq!(
@@ -555,31 +656,59 @@ mod tests {
         );
 
         let h = parse_hook(TASK_CREATED).unwrap();
-        assert_eq!(h.event, ClaudeEvent::TaskCreated { task_id: "task-001".into(), subject: "Implement user authentication".into() });
+        assert_eq!(
+            h.event,
+            ClaudeEvent::TaskCreated {
+                task_id: "task-001".into(),
+                subject: "Implement user authentication".into()
+            }
+        );
         let h = parse_hook(TASK_COMPLETED).unwrap();
-        assert_eq!(h.event, ClaudeEvent::TaskCompleted { task_id: "task-001".into(), subject: "Implement user authentication".into() });
+        assert_eq!(
+            h.event,
+            ClaudeEvent::TaskCompleted {
+                task_id: "task-001".into(),
+                subject: "Implement user authentication".into()
+            }
+        );
 
         let h = parse_hook(STOP).unwrap();
         assert_eq!(
             h.event,
             ClaudeEvent::Stop {
-                last_assistant_message: Some("I've completed the refactoring. Here's a summary...".into()),
+                last_assistant_message: Some(
+                    "I've completed the refactoring. Here's a summary...".into()
+                ),
                 background_tasks: 1
             }
         );
 
         let h = parse_hook(STOP_FAILURE).unwrap();
-        assert_eq!(h.event, ClaudeEvent::StopFailure { error: "rate_limit".into(), error_details: Some("429 Too Many Requests".into()) });
+        assert_eq!(
+            h.event,
+            ClaudeEvent::StopFailure {
+                error: "rate_limit".into(),
+                error_details: Some("429 Too Many Requests".into())
+            }
+        );
 
         let h = parse_hook(SESSION_END).unwrap();
-        assert_eq!(h.event, ClaudeEvent::SessionEnd { reason: "other".into() });
+        assert_eq!(
+            h.event,
+            ClaudeEvent::SessionEnd {
+                reason: "other".into()
+            }
+        );
     }
 
     #[test]
     fn rejects_garbage() {
         assert!(matches!(parse_hook("not json"), Err(ParseError::Json(_))));
         assert_eq!(parse_hook("{}"), Err(ParseError::Missing("session_id")));
-        assert_eq!(parse_hook(r#"{"session_id":"x"}"#), Err(ParseError::Missing("hook_event_name")));
+        assert_eq!(
+            parse_hook(r#"{"session_id":"x"}"#),
+            Err(ParseError::Missing("hook_event_name"))
+        );
         // 未知事件不报错。
         let h = parse_hook(r#"{"session_id":"x","hook_event_name":"FutureEvent"}"#).unwrap();
         assert_eq!(h.event, ClaudeEvent::Other("FutureEvent".into()));
@@ -617,7 +746,10 @@ mod tests {
 
         let fail = parse_hook(STOP_FAILURE).unwrap();
         assert_eq!(apply_hook(&mut s, &fail, 7), Some(Cue::Error));
-        assert_eq!(s.detail.as_deref(), Some("rate_limit：429 Too Many Requests"));
+        assert_eq!(
+            s.detail.as_deref(),
+            Some("rate_limit：429 Too Many Requests")
+        );
 
         let end = parse_hook(SESSION_END).unwrap();
         assert_eq!(apply_hook(&mut s, &end, 8), None);
@@ -649,7 +781,10 @@ mod tests {
         let create = parse_hook(TASK_CREATE).unwrap();
         apply_hook(&mut s, &create, 2);
         assert_eq!(s.plan.len(), 1);
-        assert_eq!(s.plan[0].active_text.as_deref(), Some("Implementing user authentication"));
+        assert_eq!(
+            s.plan[0].active_text.as_deref(),
+            Some("Implementing user authentication")
+        );
 
         let update = parse_hook(TASK_UPDATE).unwrap();
         apply_hook(&mut s, &update, 3);
@@ -679,7 +814,9 @@ mod tests {
 
     #[test]
     fn exit_plan_mode_markdown() {
-        let items = plan_from_markdown("# Plan\n\n1. 读代码\n2. 改 bug\n   - 子项不算\n- [x] 已完成的一步\n\n其他文字");
+        let items = plan_from_markdown(
+            "# Plan\n\n1. 读代码\n2. 改 bug\n   - 子项不算\n- [x] 已完成的一步\n\n其他文字",
+        );
         let texts: Vec<_> = items.iter().map(|i| i.text.as_str()).collect();
         assert_eq!(texts, vec!["读代码", "改 bug", "已完成的一步"]);
         assert_eq!(items[2].status, PlanStatus::Completed);
@@ -688,15 +825,29 @@ mod tests {
     #[test]
     fn rebuilds_plan_from_transcript() {
         let plan = plan_from_transcript(std::io::Cursor::new(TRANSCRIPT)).unwrap();
-        let summary: Vec<_> = plan.iter().map(|p| (p.id.clone().unwrap_or_default(), p.text.clone(), p.status)).collect();
+        let summary: Vec<_> = plan
+            .iter()
+            .map(|p| (p.id.clone().unwrap_or_default(), p.text.clone(), p.status))
+            .collect();
         assert_eq!(
             summary,
             vec![
-                ("1".to_string(), "读取配置".to_string(), PlanStatus::Completed),
-                ("2".to_string(), "写解析器".to_string(), PlanStatus::InProgress),
+                (
+                    "1".to_string(),
+                    "读取配置".to_string(),
+                    PlanStatus::Completed
+                ),
+                (
+                    "2".to_string(),
+                    "写解析器".to_string(),
+                    PlanStatus::InProgress
+                ),
             ]
         );
         // 没有计划工具时返回 None。
-        assert!(plan_from_transcript(std::io::Cursor::new("{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\n")).is_none());
+        assert!(plan_from_transcript(std::io::Cursor::new(
+            "{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\n"
+        ))
+        .is_none());
     }
 }

@@ -44,7 +44,10 @@ pub fn backup_file(path: &Path) -> std::io::Result<Option<PathBuf>> {
         return Ok(None);
     }
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S%.3f");
-    let file_name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
     let backup = path.with_file_name(format!("{file_name}.steppy-backup-{stamp}"));
     std::fs::copy(path, &backup)?;
     Ok(Some(backup))
@@ -81,8 +84,12 @@ mod tests {
 
     #[test]
     fn recognises_hook_program() {
-        assert!(is_our_program("/home/me/.local/share/steppy/bin/steppy-hook"));
-        assert!(is_our_program(r"C:\Users\Me Too\AppData\Local\Steppy\bin\steppy-hook.exe"));
+        assert!(is_our_program(
+            "/home/me/.local/share/steppy/bin/steppy-hook"
+        ));
+        assert!(is_our_program(
+            r"C:\Users\Me Too\AppData\Local\Steppy\bin\steppy-hook.exe"
+        ));
         assert!(is_our_program("\"C:\\x\\Steppy-Hook.EXE\""));
         assert!(!is_our_program("/usr/bin/notify-send"));
         assert!(!is_our_program("steppy-hooker"));

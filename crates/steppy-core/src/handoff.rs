@@ -89,7 +89,13 @@ pub enum OwnerState {
     /// 已隐藏，等待对方接受。
     Offering { to: NodeId, seq: u64, since: i64 },
     /// 在对方机器上。
-    Away { at: NodeId, seq: u64, commit_sent: i64, last_lease_sent: i64, last_ack: i64 },
+    Away {
+        at: NodeId,
+        seq: u64,
+        commit_sent: i64,
+        last_lease_sent: i64,
+        last_ack: i64,
+    },
     /// 和对方失联，等对方租约必然过期后收回。
     Reclaiming { at: NodeId, seq: u64, until: i64 },
 }
@@ -98,7 +104,10 @@ pub enum OwnerState {
 pub enum OwnerAction {
     Send(NodeId, PetMsg),
     /// 在本机显示宠物。`from` 为 Some 表示从那台机器回来（从对应一侧走进来）。
-    ShowAtHome { from: Option<NodeId>, reason: ReturnReason },
+    ShowAtHome {
+        from: Option<NodeId>,
+        reason: ReturnReason,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,19 +131,40 @@ pub struct OwnerHandoff {
 
 impl OwnerHandoff {
     pub fn new(me: impl Into<NodeId>, persisted_seq: u64) -> Self {
-        OwnerHandoff { me: me.into(), seq: persisted_seq, state: OwnerState::Home }
+        OwnerHandoff {
+            me: me.into(),
+            seq: persisted_seq,
+            state: OwnerState::Home,
+        }
     }
 
     /// 程序重启时：如果上次退出时宠物不在家，就保守地等一个完整的租约 + 余量再显示。
-    pub fn restore(me: impl Into<NodeId>, persisted_seq: u64, persisted: OwnerState, now: i64) -> Self {
+    pub fn restore(
+        me: impl Into<NodeId>,
+        persisted_seq: u64,
+        persisted: OwnerState,
+        now: i64,
+    ) -> Self {
         let state = match persisted {
             OwnerState::Home => OwnerState::Home,
-            OwnerState::Offering { to, seq, .. } => OwnerState::Reclaiming { at: to, seq, until: now + LEASE_MS + MARGIN_MS },
+            OwnerState::Offering { to, seq, .. } => OwnerState::Reclaiming {
+                at: to,
+                seq,
+                until: now + LEASE_MS + MARGIN_MS,
+            },
             OwnerState::Away { at, seq, .. } | OwnerState::Reclaiming { at, seq, .. } => {
-                OwnerState::Reclaiming { at, seq, until: now + LEASE_MS + MARGIN_MS }
+                OwnerState::Reclaiming {
+                    at,
+                    seq,
+                    until: now + LEASE_MS + MARGIN_MS,
+                }
             }
         };
-        OwnerHandoff { me: me.into(), seq: persisted_seq, state }
+        OwnerHandoff {
+            me: me.into(),
+            seq: persisted_seq,
+            state,
+        }
     }
 
     pub fn is_home(&self) -> bool {
@@ -144,30 +174,51 @@ impl OwnerHandoff {
     /// 宠物现在在哪台机器（Some(host)）或在家（None）。
     pub fn away_at(&self) -> Option<&NodeId> {
         match &self.state {
-            OwnerState::Away { at, .. } | OwnerState::Reclaiming { at, .. } | OwnerState::Offering { to: at, .. } => Some(at),
+            OwnerState::Away { at, .. }
+            | OwnerState::Reclaiming { at, .. }
+            | OwnerState::Offering { to: at, .. } => Some(at),
             OwnerState::Home => None,
         }
     }
 
     fn msg(&self, seq: u64, kind: PetMsgKind) -> PetMsg {
-        PetMsg { pet: self.me.clone(), seq, kind }
+        PetMsg {
+            pet: self.me.clone(),
+            seq,
+            kind,
+        }
     }
 
     /// 宠物已经在本机隐藏（走出了屏幕边缘），开始交接。只能在家时调用。
-    pub fn begin_visit(&mut self, to: NodeId, visitor: Visitor, now: i64) -> Option<Vec<OwnerAction>> {
+    pub fn begin_visit(
+        &mut self,
+        to: NodeId,
+        visitor: Visitor,
+        now: i64,
+    ) -> Option<Vec<OwnerAction>> {
         if !self.is_home() || to == self.me {
             return None;
         }
         self.seq += 1;
         let seq = self.seq;
-        self.state = OwnerState::Offering { to: to.clone(), seq, since: now };
-        Some(vec![OwnerAction::Send(to, self.msg(seq, PetMsgKind::Offer { visitor }))])
+        self.state = OwnerState::Offering {
+            to: to.clone(),
+            seq,
+            since: now,
+        };
+        Some(vec![OwnerAction::Send(
+            to,
+            self.msg(seq, PetMsgKind::Offer { visitor }),
+        )])
     }
 
     /// 召回。
     pub fn recall(&mut self) -> Vec<OwnerAction> {
         match &self.state {
-            OwnerState::Away { at, seq, .. } => vec![OwnerAction::Send(at.clone(), self.msg(*seq, PetMsgKind::Recall))],
+            OwnerState::Away { at, seq, .. } => vec![OwnerAction::Send(
+                at.clone(),
+                self.msg(*seq, PetMsgKind::Recall),
+            )],
             _ => vec![],
         }
     }
@@ -178,24 +229,57 @@ impl OwnerHandoff {
         }
         let mut out = vec![];
         match (&self.state, &msg.kind) {
-            (OwnerState::Offering { to, seq, .. }, PetMsgKind::Accept) if to == from && *seq == msg.seq => {
-                let (at, seq) = (to.clone(), *seq);
-                out.push(OwnerAction::Send(at.clone(), self.msg(seq, PetMsgKind::Commit)));
-                self.state = OwnerState::Away { at, seq, commit_sent: now, last_lease_sent: now, last_ack: now };
-            }
-            (OwnerState::Offering { to, seq, .. }, PetMsgKind::Reject { .. }) if to == from && *seq == msg.seq => {
-                self.state = OwnerState::Home;
-                out.push(OwnerAction::ShowAtHome { from: None, reason: ReturnReason::NotAccepted });
-            }
-            (OwnerState::Away { at, seq, .. } | OwnerState::Reclaiming { at, seq, .. }, PetMsgKind::Return | PetMsgKind::Reject { .. })
-                if at == from && *seq == msg.seq =>
+            (OwnerState::Offering { to, seq, .. }, PetMsgKind::Accept)
+                if to == from && *seq == msg.seq =>
             {
-                let at = at.clone();
-                let reason = if matches!(msg.kind, PetMsgKind::Return) { ReturnReason::Returned } else { ReturnReason::NotAccepted };
-                self.state = OwnerState::Home;
-                out.push(OwnerAction::ShowAtHome { from: Some(at), reason });
+                let (at, seq) = (to.clone(), *seq);
+                out.push(OwnerAction::Send(
+                    at.clone(),
+                    self.msg(seq, PetMsgKind::Commit),
+                ));
+                self.state = OwnerState::Away {
+                    at,
+                    seq,
+                    commit_sent: now,
+                    last_lease_sent: now,
+                    last_ack: now,
+                };
             }
-            (OwnerState::Away { at, seq, commit_sent, last_lease_sent, .. }, PetMsgKind::LeaseAck) if at == from && *seq == msg.seq => {
+            (OwnerState::Offering { to, seq, .. }, PetMsgKind::Reject { .. })
+                if to == from && *seq == msg.seq =>
+            {
+                self.state = OwnerState::Home;
+                out.push(OwnerAction::ShowAtHome {
+                    from: None,
+                    reason: ReturnReason::NotAccepted,
+                });
+            }
+            (
+                OwnerState::Away { at, seq, .. } | OwnerState::Reclaiming { at, seq, .. },
+                PetMsgKind::Return | PetMsgKind::Reject { .. },
+            ) if at == from && *seq == msg.seq => {
+                let at = at.clone();
+                let reason = if matches!(msg.kind, PetMsgKind::Return) {
+                    ReturnReason::Returned
+                } else {
+                    ReturnReason::NotAccepted
+                };
+                self.state = OwnerState::Home;
+                out.push(OwnerAction::ShowAtHome {
+                    from: Some(at),
+                    reason,
+                });
+            }
+            (
+                OwnerState::Away {
+                    at,
+                    seq,
+                    commit_sent,
+                    last_lease_sent,
+                    ..
+                },
+                PetMsgKind::LeaseAck,
+            ) if at == from && *seq == msg.seq => {
                 self.state = OwnerState::Away {
                     at: at.clone(),
                     seq: *seq,
@@ -216,20 +300,50 @@ impl OwnerHandoff {
                 // 没发过 Commit，对方不可能显示。告诉对方作废。
                 out.push(OwnerAction::Send(to, self.msg(seq, PetMsgKind::Abort)));
                 self.state = OwnerState::Home;
-                out.push(OwnerAction::ShowAtHome { from: None, reason: ReturnReason::NotAccepted });
+                out.push(OwnerAction::ShowAtHome {
+                    from: None,
+                    reason: ReturnReason::NotAccepted,
+                });
             }
-            OwnerState::Away { at, seq, commit_sent, last_lease_sent, last_ack } => {
+            OwnerState::Away {
+                at,
+                seq,
+                commit_sent,
+                last_lease_sent,
+                last_ack,
+            } => {
                 if now - last_ack > ACK_GRACE_MS {
                     // 失联：停止续约，等对方租约必然过期。
-                    self.state = OwnerState::Reclaiming { at, seq, until: last_lease_sent + LEASE_MS + MARGIN_MS };
+                    self.state = OwnerState::Reclaiming {
+                        at,
+                        seq,
+                        until: last_lease_sent + LEASE_MS + MARGIN_MS,
+                    };
                 } else if now - last_lease_sent >= RENEW_MS {
-                    out.push(OwnerAction::Send(at.clone(), self.msg(seq, PetMsgKind::Lease { elapsed_ms: now - commit_sent })));
-                    self.state = OwnerState::Away { at, seq, commit_sent, last_lease_sent: now, last_ack };
+                    out.push(OwnerAction::Send(
+                        at.clone(),
+                        self.msg(
+                            seq,
+                            PetMsgKind::Lease {
+                                elapsed_ms: now - commit_sent,
+                            },
+                        ),
+                    ));
+                    self.state = OwnerState::Away {
+                        at,
+                        seq,
+                        commit_sent,
+                        last_lease_sent: now,
+                        last_ack,
+                    };
                 }
             }
             OwnerState::Reclaiming { at, until, .. } if now >= until => {
                 self.state = OwnerState::Home;
-                out.push(OwnerAction::ShowAtHome { from: Some(at), reason: ReturnReason::Reclaimed });
+                out.push(OwnerAction::ShowAtHome {
+                    from: Some(at),
+                    reason: ReturnReason::Reclaimed,
+                });
             }
             _ => {}
         }
@@ -243,19 +357,36 @@ impl OwnerHandoff {
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum GuestState {
     None,
-    Accepted { seq: u64, accepted_at: i64, visitor: Visitor },
-    Visiting { seq: u64, commit_at: i64, lease_until: i64, visitor: Visitor },
+    Accepted {
+        seq: u64,
+        accepted_at: i64,
+        visitor: Visitor,
+    },
+    Visiting {
+        seq: u64,
+        commit_at: i64,
+        lease_until: i64,
+        visitor: Visitor,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostAction {
     Send(NodeId, PetMsg),
     /// 显示来访的宠物。
-    ShowGuest { owner: NodeId, visitor: Visitor },
+    ShowGuest {
+        owner: NodeId,
+        visitor: Visitor,
+    },
     /// 立即隐藏来访的宠物。
-    HideGuest { owner: NodeId, reason: GuestLeaveReason },
+    HideGuest {
+        owner: NodeId,
+        reason: GuestLeaveReason,
+    },
     /// 请播放走出去的动画，播完调用 [`GuestSlot::leave`]。
-    StartLeaving { owner: NodeId },
+    StartLeaving {
+        owner: NodeId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -278,7 +409,11 @@ pub struct GuestSlot {
 
 impl GuestSlot {
     pub fn new(owner: impl Into<NodeId>) -> Self {
-        GuestSlot { owner: owner.into(), state: GuestState::None, max_seq: 0 }
+        GuestSlot {
+            owner: owner.into(),
+            state: GuestState::None,
+            max_seq: 0,
+        }
     }
 
     pub fn is_visible(&self) -> bool {
@@ -286,11 +421,24 @@ impl GuestSlot {
     }
 
     fn reply(&self, seq: u64, kind: PetMsgKind) -> HostAction {
-        HostAction::Send(self.owner.clone(), PetMsg { pet: self.owner.clone(), seq, kind })
+        HostAction::Send(
+            self.owner.clone(),
+            PetMsg {
+                pet: self.owner.clone(),
+                seq,
+                kind,
+            },
+        )
     }
 
     /// `willing` 表示本机当前是否愿意接待（设置里允许、没有在免打扰等）。
-    pub fn on_msg(&mut self, from: &NodeId, msg: &PetMsg, now: i64, willing: bool) -> Vec<HostAction> {
+    pub fn on_msg(
+        &mut self,
+        from: &NodeId,
+        msg: &PetMsg,
+        now: i64,
+        willing: bool,
+    ) -> Vec<HostAction> {
         // 只接受主人机器本人发来的、关于它自己宠物的消息。
         if from != &self.owner || msg.pet != self.owner {
             return vec![];
@@ -299,48 +447,98 @@ impl GuestSlot {
         match &msg.kind {
             PetMsgKind::Offer { visitor } => {
                 if msg.seq <= self.max_seq {
-                    out.push(self.reply(msg.seq, PetMsgKind::Reject { reason: "过期的请求".into() }));
+                    out.push(self.reply(
+                        msg.seq,
+                        PetMsgKind::Reject {
+                            reason: "过期的请求".into(),
+                        },
+                    ));
                     return out;
                 }
                 self.max_seq = msg.seq;
                 // 主人已经开始新一轮交接，说明它认为宠物在家；旧的来访必须结束（正常情况下早已过期）。
                 if let GuestState::Visiting { .. } = self.state {
                     self.state = GuestState::None;
-                    out.push(HostAction::HideGuest { owner: self.owner.clone(), reason: GuestLeaveReason::LeaseExpired });
+                    out.push(HostAction::HideGuest {
+                        owner: self.owner.clone(),
+                        reason: GuestLeaveReason::LeaseExpired,
+                    });
                 }
                 if willing {
-                    self.state = GuestState::Accepted { seq: msg.seq, accepted_at: now, visitor: visitor.clone() };
+                    self.state = GuestState::Accepted {
+                        seq: msg.seq,
+                        accepted_at: now,
+                        visitor: visitor.clone(),
+                    };
                     out.push(self.reply(msg.seq, PetMsgKind::Accept));
                 } else {
                     self.state = GuestState::None;
-                    out.push(self.reply(msg.seq, PetMsgKind::Reject { reason: "对方暂时不接待".into() }));
+                    out.push(self.reply(
+                        msg.seq,
+                        PetMsgKind::Reject {
+                            reason: "对方暂时不接待".into(),
+                        },
+                    ));
                 }
             }
             PetMsgKind::Commit => match &self.state {
-                GuestState::Accepted { seq, accepted_at, visitor } if *seq == msg.seq => {
+                GuestState::Accepted {
+                    seq,
+                    accepted_at,
+                    visitor,
+                } if *seq == msg.seq => {
                     if now - accepted_at <= COMMIT_WINDOW_MS {
                         let visitor = visitor.clone();
-                        self.state = GuestState::Visiting { seq: *seq, commit_at: now, lease_until: now + LEASE_MS, visitor: visitor.clone() };
-                        out.push(HostAction::ShowGuest { owner: self.owner.clone(), visitor });
+                        self.state = GuestState::Visiting {
+                            seq: *seq,
+                            commit_at: now,
+                            lease_until: now + LEASE_MS,
+                            visitor: visitor.clone(),
+                        };
+                        out.push(HostAction::ShowGuest {
+                            owner: self.owner.clone(),
+                            visitor,
+                        });
                         out.push(self.reply(msg.seq, PetMsgKind::LeaseAck));
                     } else {
                         // Commit 来得太晚：不显示，并明确告诉主人。
                         self.state = GuestState::None;
-                        out.push(self.reply(msg.seq, PetMsgKind::Reject { reason: "确认超时".into() }));
+                        out.push(self.reply(
+                            msg.seq,
+                            PetMsgKind::Reject {
+                                reason: "确认超时".into(),
+                            },
+                        ));
                     }
                 }
                 _ => {
                     if msg.seq <= self.max_seq && !self.is_visible() {
-                        out.push(self.reply(msg.seq, PetMsgKind::Reject { reason: "没有待确认的来访".into() }));
+                        out.push(self.reply(
+                            msg.seq,
+                            PetMsgKind::Reject {
+                                reason: "没有待确认的来访".into(),
+                            },
+                        ));
                     }
                 }
             },
             PetMsgKind::Lease { elapsed_ms } => {
-                if let GuestState::Visiting { seq, commit_at, visitor, .. } = &self.state {
+                if let GuestState::Visiting {
+                    seq,
+                    commit_at,
+                    visitor,
+                    ..
+                } = &self.state
+                {
                     if *seq == msg.seq {
                         let host_elapsed = now - commit_at;
                         if host_elapsed - elapsed_ms <= MAX_EXTRA_DELAY_MS {
-                            self.state = GuestState::Visiting { seq: *seq, commit_at: *commit_at, lease_until: now + LEASE_MS, visitor: visitor.clone() };
+                            self.state = GuestState::Visiting {
+                                seq: *seq,
+                                commit_at: *commit_at,
+                                lease_until: now + LEASE_MS,
+                                visitor: visitor.clone(),
+                            };
                             out.push(self.reply(msg.seq, PetMsgKind::LeaseAck));
                         }
                     }
@@ -355,7 +553,9 @@ impl GuestSlot {
             }
             PetMsgKind::Recall => match &self.state {
                 GuestState::Visiting { seq, .. } if *seq == msg.seq => {
-                    out.push(HostAction::StartLeaving { owner: self.owner.clone() });
+                    out.push(HostAction::StartLeaving {
+                        owner: self.owner.clone(),
+                    });
                 }
                 GuestState::Visiting { .. } => {}
                 // 还没显示（Commit 还在路上）或者已经不在这里了：作废这一轮，告诉主人宠物不在这儿。
@@ -382,7 +582,10 @@ impl GuestSlot {
                 let seq = *seq;
                 self.state = GuestState::None;
                 vec![
-                    HostAction::HideGuest { owner: self.owner.clone(), reason: GuestLeaveReason::Left },
+                    HostAction::HideGuest {
+                        owner: self.owner.clone(),
+                        reason: GuestLeaveReason::Left,
+                    },
                     self.reply(seq, PetMsgKind::Return),
                 ]
             }
@@ -394,7 +597,10 @@ impl GuestSlot {
         match &self.state {
             GuestState::Visiting { lease_until, .. } if now > *lease_until => {
                 self.state = GuestState::None;
-                vec![HostAction::HideGuest { owner: self.owner.clone(), reason: GuestLeaveReason::LeaseExpired }]
+                vec![HostAction::HideGuest {
+                    owner: self.owner.clone(),
+                    reason: GuestLeaveReason::LeaseExpired,
+                }]
             }
             GuestState::Accepted { accepted_at, .. } if now - accepted_at > COMMIT_WINDOW_MS => {
                 self.state = GuestState::None;
@@ -410,7 +616,12 @@ mod tests {
     use super::*;
 
     fn visitor() -> Visitor {
-        Visitor { owner_name: "小明".into(), machine_name: "台式机".into(), hue: 30, enter_side: Side::Left }
+        Visitor {
+            owner_name: "小明".into(),
+            machine_name: "台式机".into(),
+            hue: 30,
+            enter_side: Side::Left,
+        }
     }
 
     /// 带延迟和丢包的模拟网络。
@@ -473,7 +684,13 @@ mod tests {
                 guest: GuestSlot::new("O"),
                 owner_visible: true,
                 guest_visible: false,
-                net: Net { queue: vec![], rng: seed | 1, drop_pct, max_delay, partitioned: false },
+                net: Net {
+                    queue: vec![],
+                    rng: seed | 1,
+                    drop_pct,
+                    max_delay,
+                    partitioned: false,
+                },
                 now: 0,
                 willing: true,
                 shown_home: 0,
@@ -513,7 +730,10 @@ mod tests {
         fn depart(&mut self) {
             if self.owner.is_home() && self.owner_visible {
                 self.owner_visible = false; // 先走出屏幕、隐藏
-                let acts = self.owner.begin_visit("H".into(), visitor(), self.now).unwrap();
+                let acts = self
+                    .owner
+                    .begin_visit("H".into(), visitor(), self.now)
+                    .unwrap();
                 self.apply_owner(acts);
             }
         }
@@ -606,41 +826,112 @@ mod tests {
     #[test]
     fn late_commit_is_rejected() {
         let mut g = GuestSlot::new("O");
-        let offer = PetMsg { pet: "O".into(), seq: 1, kind: PetMsgKind::Offer { visitor: visitor() } };
+        let offer = PetMsg {
+            pet: "O".into(),
+            seq: 1,
+            kind: PetMsgKind::Offer { visitor: visitor() },
+        };
         let a = g.on_msg(&"O".into(), &offer, 0, true);
-        assert!(matches!(&a[0], HostAction::Send(_, PetMsg { kind: PetMsgKind::Accept, .. })));
-        let commit = PetMsg { pet: "O".into(), seq: 1, kind: PetMsgKind::Commit };
+        assert!(matches!(
+            &a[0],
+            HostAction::Send(
+                _,
+                PetMsg {
+                    kind: PetMsgKind::Accept,
+                    ..
+                }
+            )
+        ));
+        let commit = PetMsg {
+            pet: "O".into(),
+            seq: 1,
+            kind: PetMsgKind::Commit,
+        };
         let a = g.on_msg(&"O".into(), &commit, COMMIT_WINDOW_MS + 1, true);
         assert!(!g.is_visible());
-        assert!(matches!(&a[0], HostAction::Send(_, PetMsg { kind: PetMsgKind::Reject { .. }, .. })));
+        assert!(matches!(
+            &a[0],
+            HostAction::Send(
+                _,
+                PetMsg {
+                    kind: PetMsgKind::Reject { .. },
+                    ..
+                }
+            )
+        ));
     }
 
     #[test]
     fn stale_lease_is_ignored() {
         let mut g = GuestSlot::new("O");
-        g.on_msg(&"O".into(), &PetMsg { pet: "O".into(), seq: 1, kind: PetMsgKind::Offer { visitor: visitor() } }, 0, true);
-        g.on_msg(&"O".into(), &PetMsg { pet: "O".into(), seq: 1, kind: PetMsgKind::Commit }, 10, true);
+        g.on_msg(
+            &"O".into(),
+            &PetMsg {
+                pet: "O".into(),
+                seq: 1,
+                kind: PetMsgKind::Offer { visitor: visitor() },
+            },
+            0,
+            true,
+        );
+        g.on_msg(
+            &"O".into(),
+            &PetMsg {
+                pet: "O".into(),
+                seq: 1,
+                kind: PetMsgKind::Commit,
+            },
+            10,
+            true,
+        );
         assert!(g.is_visible());
         // 一条在主人那边 elapsed=2000 时发出、但 8 秒后才到的续约：不续。
-        let a = g.on_msg(&"O".into(), &PetMsg { pet: "O".into(), seq: 1, kind: PetMsgKind::Lease { elapsed_ms: 2_000 } }, 10_010, true);
+        let a = g.on_msg(
+            &"O".into(),
+            &PetMsg {
+                pet: "O".into(),
+                seq: 1,
+                kind: PetMsgKind::Lease { elapsed_ms: 2_000 },
+            },
+            10_010,
+            true,
+        );
         assert!(a.is_empty());
         // 租约照常过期。
         let a = g.tick(10 + LEASE_MS + 1);
-        assert!(matches!(a[0], HostAction::HideGuest { reason: GuestLeaveReason::LeaseExpired, .. }));
+        assert!(matches!(
+            a[0],
+            HostAction::HideGuest {
+                reason: GuestLeaveReason::LeaseExpired,
+                ..
+            }
+        ));
     }
 
     #[test]
     fn messages_from_impostors_are_ignored() {
         let mut g = GuestSlot::new("O");
-        let offer = PetMsg { pet: "O".into(), seq: 1, kind: PetMsgKind::Offer { visitor: visitor() } };
+        let offer = PetMsg {
+            pet: "O".into(),
+            seq: 1,
+            kind: PetMsgKind::Offer { visitor: visitor() },
+        };
         assert!(g.on_msg(&"X".into(), &offer, 0, true).is_empty());
         let mut o = OwnerHandoff::new("O", 0);
         o.begin_visit("H".into(), visitor(), 0).unwrap();
-        let accept = PetMsg { pet: "O".into(), seq: 1, kind: PetMsgKind::Accept };
+        let accept = PetMsg {
+            pet: "O".into(),
+            seq: 1,
+            kind: PetMsgKind::Accept,
+        };
         assert!(o.on_msg(&"X".into(), &accept, 1).is_empty());
         assert!(matches!(o.state, OwnerState::Offering { .. }));
         // 旧 seq 的 Accept 也无效。
-        let old = PetMsg { pet: "O".into(), seq: 0, kind: PetMsgKind::Accept };
+        let old = PetMsg {
+            pet: "O".into(),
+            seq: 0,
+            kind: PetMsgKind::Accept,
+        };
         assert!(o.on_msg(&"H".into(), &old, 1).is_empty());
     }
 
@@ -655,11 +946,23 @@ mod tests {
 
     #[test]
     fn restart_while_away_waits_before_showing() {
-        let away = OwnerState::Away { at: "H".into(), seq: 3, commit_sent: 0, last_lease_sent: 0, last_ack: 0 };
+        let away = OwnerState::Away {
+            at: "H".into(),
+            seq: 3,
+            commit_sent: 0,
+            last_lease_sent: 0,
+            last_ack: 0,
+        };
         let mut o = OwnerHandoff::restore("O", 3, away, 100_000);
         assert!(o.tick(100_000 + LEASE_MS).is_empty());
         let a = o.tick(100_000 + LEASE_MS + MARGIN_MS);
-        assert!(matches!(a[0], OwnerAction::ShowAtHome { reason: ReturnReason::Reclaimed, .. }));
+        assert!(matches!(
+            a[0],
+            OwnerAction::ShowAtHome {
+                reason: ReturnReason::Reclaimed,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -692,7 +995,10 @@ mod tests {
             w.net.partitioned = false;
             w.net.drop_pct = 0;
             w.step(LEASE_MS + ACK_GRACE_MS + MARGIN_MS + OFFER_TIMEOUT_MS + 2_000);
-            assert!(w.owner_visible ^ w.guest_visible, "seed {seed}: 最终应恰好在一处");
+            assert!(
+                w.owner_visible ^ w.guest_visible,
+                "seed {seed}: 最终应恰好在一处"
+            );
         }
     }
 }

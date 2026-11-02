@@ -43,9 +43,11 @@ fn handler(cmd: &HookCommand, timeout: Option<u64>) -> Value {
 }
 
 fn handler_is_ours(h: &Value) -> bool {
-    h.get("command").and_then(|c| c.as_str()).map(is_our_program).unwrap_or(false)
-        || h
-            .get("command")
+    h.get("command")
+        .and_then(|c| c.as_str())
+        .map(is_our_program)
+        .unwrap_or(false)
+        || h.get("command")
             .and_then(|c| c.as_str())
             .map(|c| c.contains("steppy-hook"))
             .unwrap_or(false)
@@ -70,14 +72,18 @@ fn render(v: &Value) -> String {
 
 /// 从 settings 里删掉我们的 hook，返回删掉的数量。用户自己的 hook 原样保留。
 fn strip_ours(v: &mut Value) -> Result<usize, InstallError> {
-    let Some(hooks) = v.get_mut("hooks") else { return Ok(0) };
+    let Some(hooks) = v.get_mut("hooks") else {
+        return Ok(0);
+    };
     let Some(events) = hooks.as_object_mut() else {
         return Err(InstallError::Shape("\"hooks\" 不是对象".into()));
     };
     let mut removed = 0;
     let names: Vec<String> = events.keys().cloned().collect();
     for name in names {
-        let Some(groups) = events.get_mut(&name).and_then(|g| g.as_array_mut()) else { continue };
+        let Some(groups) = events.get_mut(&name).and_then(|g| g.as_array_mut()) else {
+            continue;
+        };
         for group in groups.iter_mut() {
             if let Some(list) = group.get_mut("hooks").and_then(|h| h.as_array_mut()) {
                 let before = list.len();
@@ -107,12 +113,16 @@ pub fn install(text: &str, cmd: &HookCommand) -> Result<String, InstallError> {
     let mut v = parse(text)?;
     strip_ours(&mut v)?;
     let obj = v.as_object_mut().unwrap();
-    let hooks = obj.entry("hooks").or_insert_with(|| Value::Object(Map::new()));
+    let hooks = obj
+        .entry("hooks")
+        .or_insert_with(|| Value::Object(Map::new()));
     let events = hooks
         .as_object_mut()
         .ok_or_else(|| InstallError::Shape("\"hooks\" 不是对象".into()))?;
     for (event, timeout) in EVENTS {
-        let groups = events.entry(event.to_string()).or_insert_with(|| Value::Array(vec![]));
+        let groups = events
+            .entry(event.to_string())
+            .or_insert_with(|| Value::Array(vec![]));
         let arr = groups
             .as_array_mut()
             .ok_or_else(|| InstallError::Shape(format!("hooks.{event} 不是数组")))?;
@@ -186,10 +196,15 @@ mod tests {
         let start = &v["hooks"]["SessionStart"][0]["hooks"][0];
         assert_eq!(start["type"], "command");
         assert_eq!(start["command"], cmd().program);
-        assert_eq!(start["args"], json!(["claude", "--endpoint", cmd().endpoint_file]));
+        assert_eq!(
+            start["args"],
+            json!(["claude", "--endpoint", cmd().endpoint_file])
+        );
         assert_eq!(start["timeout"], 5);
         // SessionEnd 不设 timeout。
-        assert!(v["hooks"]["SessionEnd"][0]["hooks"][0].get("timeout").is_none());
+        assert!(v["hooks"]["SessionEnd"][0]["hooks"][0]
+            .get("timeout")
+            .is_none());
         // 不带 matcher：匹配所有。
         assert!(v["hooks"]["PostToolUse"][0].get("matcher").is_none());
     }
@@ -207,7 +222,9 @@ mod tests {
         let stop = v["hooks"]["Stop"].as_array().unwrap();
         assert_eq!(stop.len(), 2);
         assert_eq!(stop[0]["hooks"][0]["command"], "say done");
-        assert!(is_our_program(stop[1]["hooks"][0]["command"].as_str().unwrap()));
+        assert!(is_our_program(
+            stop[1]["hooks"][0]["command"].as_str().unwrap()
+        ));
         let notif = v["hooks"]["Notification"].as_array().unwrap();
         assert_eq!(notif[0]["matcher"], "idle_prompt");
         assert_eq!(notif.len(), 2);
@@ -225,7 +242,10 @@ mod tests {
         other.program = "/opt/steppy/steppy-hook".into();
         let moved = install(&once, &other).unwrap();
         assert!(!moved.contains("Me Too\\\\AppData\\\\Local\\\\Steppy\\\\bin"));
-        assert_eq!(moved.matches("/opt/steppy/steppy-hook").count(), EVENTS.len());
+        assert_eq!(
+            moved.matches("/opt/steppy/steppy-hook").count(),
+            EVENTS.len()
+        );
     }
 
     #[test]
@@ -256,7 +276,10 @@ mod tests {
         .to_string();
         let out = uninstall(&text).unwrap();
         let v: Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(v, json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say hi"}]}]}}));
+        assert_eq!(
+            v,
+            json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say hi"}]}]}})
+        );
     }
 
     #[test]
@@ -267,8 +290,17 @@ mod tests {
 
     #[test]
     fn refuses_to_touch_invalid_json() {
-        assert!(matches!(install("{ not json", &cmd()), Err(InstallError::BadJson(_))));
-        assert!(matches!(install("[1,2]", &cmd()), Err(InstallError::Shape(_))));
-        assert!(matches!(install(r#"{"hooks": []}"#, &cmd()), Err(InstallError::Shape(_))));
+        assert!(matches!(
+            install("{ not json", &cmd()),
+            Err(InstallError::BadJson(_))
+        ));
+        assert!(matches!(
+            install("[1,2]", &cmd()),
+            Err(InstallError::Shape(_))
+        ));
+        assert!(matches!(
+            install(r#"{"hooks": []}"#, &cmd()),
+            Err(InstallError::Shape(_))
+        ));
     }
 }

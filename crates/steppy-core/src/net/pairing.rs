@@ -87,14 +87,17 @@ fn derive(k: &[u8]) -> Keys {
 fn seal(key: &[u8; 32], plaintext: &[u8]) -> String {
     let c = ChaCha20Poly1305::new(Key::from_slice(key));
     // 每把密钥只用一次，固定 nonce 是安全的。
-    let ct = c.encrypt(Nonce::from_slice(&[0u8; 12]), plaintext).expect("encrypt");
+    let ct = c
+        .encrypt(Nonce::from_slice(&[0u8; 12]), plaintext)
+        .expect("encrypt");
     hex::encode(ct)
 }
 
 fn open(key: &[u8; 32], sealed: &str) -> Result<Vec<u8>, PairError> {
     let ct = hex::decode(sealed).map_err(|_| PairError::Malformed)?;
     let c = ChaCha20Poly1305::new(Key::from_slice(key));
-    c.decrypt(Nonce::from_slice(&[0u8; 12]), ct.as_slice()).map_err(|_| PairError::Decrypt)
+    c.decrypt(Nonce::from_slice(&[0u8; 12]), ct.as_slice())
+        .map_err(|_| PairError::Decrypt)
 }
 
 fn spake(id_a: &[u8], id_b: &[u8], code: &str, as_a: bool) -> (Spake2<Ed25519Group>, Vec<u8>) {
@@ -120,12 +123,23 @@ pub struct JoinerAwaitingP4 {
 impl Joiner {
     pub fn start(code: &str) -> (Joiner, P1) {
         let (state, msg) = spake(ID_MEMBER, ID_JOINER, code, false);
-        (Joiner { state, msg: msg.clone() }, P1 { spake: hex::encode(msg) })
+        (
+            Joiner {
+                state,
+                msg: msg.clone(),
+            },
+            P1 {
+                spake: hex::encode(msg),
+            },
+        )
     }
 
     pub fn on_p2(self, p2: &P2, me: &Member) -> Result<(JoinerAwaitingP4, P3), PairError> {
         let theirs = hex::decode(&p2.spake).map_err(|_| PairError::Malformed)?;
-        let k = self.state.finish(&theirs).map_err(|_| PairError::WrongCode)?;
+        let k = self
+            .state
+            .finish(&theirs)
+            .map_err(|_| PairError::WrongCode)?;
         let keys = derive(&k);
         let confirm = hex::decode(&p2.confirm).map_err(|_| PairError::Malformed)?;
         if !hmac_verify(&keys.confirm, &[b"M", &theirs, &self.msg], &confirm) {
@@ -163,14 +177,21 @@ impl Host {
         let k = state.finish(&theirs).map_err(|_| PairError::Malformed)?;
         let keys = derive(&k);
         let confirm = hex::encode(hmac(&keys.confirm, &[b"M", &mine, &theirs]));
-        let p2 = P2 { spake: hex::encode(&mine), confirm };
+        let p2 = P2 {
+            spake: hex::encode(&mine),
+            confirm,
+        };
         Ok((Host { keys, mine, theirs }, p2))
     }
 
     /// 校验新机器的 confirm 并解出它的自我介绍。配对码错误时返回 WrongCode（应计入失败次数）。
     pub fn on_p3(&self, p3: &P3) -> Result<JoinRequest, PairError> {
         let confirm = hex::decode(&p3.confirm).map_err(|_| PairError::Malformed)?;
-        if !hmac_verify(&self.keys.confirm, &[b"J", &self.mine, &self.theirs], &confirm) {
+        if !hmac_verify(
+            &self.keys.confirm,
+            &[b"J", &self.mine, &self.theirs],
+            &confirm,
+        ) {
             return Err(PairError::WrongCode);
         }
         let pt = open(&self.keys.seal_j2m, &p3.sealed)?;
@@ -178,7 +199,12 @@ impl Host {
     }
 
     pub fn p4(&self, accepted: &JoinAccepted) -> P4 {
-        P4 { sealed: seal(&self.keys.seal_m2j, &serde_json::to_vec(accepted).expect("json")) }
+        P4 {
+            sealed: seal(
+                &self.keys.seal_m2j,
+                &serde_json::to_vec(accepted).expect("json"),
+            ),
+        }
     }
 }
 
@@ -212,7 +238,9 @@ mod tests {
         let req = host.on_p3(&p3).unwrap();
         assert_eq!(req.member.node_id, joiner_id.node_id);
         group.add_member(req.member);
-        let p4 = host.p4(&JoinAccepted { group: group.clone() });
+        let p4 = host.p4(&JoinAccepted {
+            group: group.clone(),
+        });
         let acc = awaiting.on_p4(&p4).unwrap();
         assert_eq!(acc.group.current_key().key, group.current_key().key);
         assert!(acc.group.is_active_member(&joiner_id.node_id));
@@ -226,9 +254,15 @@ mod tests {
         let (joiner, p1) = Joiner::start("111111");
         let (host, p2) = Host::on_p1("222222", &p1).unwrap();
         // 新机器发现成员的 confirm 不对。
-        assert_eq!(joiner.on_p2(&p2, &me_member(&joiner_id)).err(), Some(PairError::WrongCode));
+        assert_eq!(
+            joiner.on_p2(&p2, &me_member(&joiner_id)).err(),
+            Some(PairError::WrongCode)
+        );
         // 一个不检查 confirm、直接乱发 P3 的攻击者也会被成员拒绝。
-        let forged = P3 { confirm: hex::encode([0u8; 32]), sealed: "00".repeat(40) };
+        let forged = P3 {
+            confirm: hex::encode([0u8; 32]),
+            sealed: "00".repeat(40),
+        };
         assert_eq!(host.on_p3(&forged).err(), Some(PairError::WrongCode));
     }
 
@@ -242,7 +276,9 @@ mod tests {
         bytes[0] ^= 1;
         p3.sealed = hex::encode(bytes);
         assert_eq!(host.on_p3(&p3).err(), Some(PairError::Decrypt));
-        let p4 = P4 { sealed: "00".repeat(32) };
+        let p4 = P4 {
+            sealed: "00".repeat(32),
+        };
         assert_eq!(awaiting.on_p4(&p4).err(), Some(PairError::Decrypt));
     }
 
@@ -259,7 +295,9 @@ mod tests {
         let p4 = host.p4(&JoinAccepted { group });
         let (eve, _) = Joiner::start("000000");
         assert!(eve.on_p2(&p2, &me_member(&joiner_id)).is_err());
-        let fake = JoinerAwaitingP4 { keys: derive(b"guess") };
+        let fake = JoinerAwaitingP4 {
+            keys: derive(b"guess"),
+        };
         assert!(fake.on_p4(&p4).is_err());
     }
 }

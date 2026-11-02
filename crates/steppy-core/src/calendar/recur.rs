@@ -27,7 +27,12 @@ fn occurs_on(data: &EventData, day: NaiveDate) -> bool {
 }
 
 /// 列出与 `[from, to)` 有交集的所有发生。
-pub fn occurrences(id: &str, data: &EventData, from: NaiveDateTime, to: NaiveDateTime) -> Vec<Occurrence> {
+pub fn occurrences(
+    id: &str,
+    data: &EventData,
+    from: NaiveDateTime,
+    to: NaiveDateTime,
+) -> Vec<Occurrence> {
     let duration = data.end - data.start;
     let tod = data.start.time();
     let mut out = Vec::new();
@@ -35,7 +40,9 @@ pub fn occurrences(id: &str, data: &EventData, from: NaiveDateTime, to: NaiveDat
         return out;
     }
     // 从 from 往前推一个事件长度，保证跨天的长事件也能被找到。
-    let first_day = (from - duration - Duration::days(1)).date().max(data.start.date());
+    let first_day = (from - duration - Duration::days(1))
+        .date()
+        .max(data.start.date());
     let last_day = to.date();
     let mut day = first_day;
     let mut guard = 0;
@@ -45,7 +52,11 @@ pub fn occurrences(id: &str, data: &EventData, from: NaiveDateTime, to: NaiveDat
             let start = day.and_time(tod);
             let end = start + duration;
             if start < to && end > from {
-                out.push(Occurrence { event_id: id.to_string(), start, end });
+                out.push(Occurrence {
+                    event_id: id.to_string(),
+                    start,
+                    end,
+                });
             }
         }
         if data.repeat == Repeat::None && day >= data.start.date() {
@@ -60,7 +71,10 @@ pub fn occurrences(id: &str, data: &EventData, from: NaiveDateTime, to: NaiveDat
 }
 
 /// 某天的所有日程发生，按开始时间排序（全天事件在前）。
-pub fn day_agenda<'a>(records: impl IntoIterator<Item = &'a EventRecord>, day: NaiveDate) -> Vec<(Occurrence, &'a EventRecord)> {
+pub fn day_agenda<'a>(
+    records: impl IntoIterator<Item = &'a EventRecord>,
+    day: NaiveDate,
+) -> Vec<(Occurrence, &'a EventRecord)> {
     let from = day.and_time(NaiveTime::MIN);
     let to = from + Duration::days(1);
     let mut out: Vec<(Occurrence, &EventRecord)> = Vec::new();
@@ -74,7 +88,9 @@ pub fn day_agenda<'a>(records: impl IntoIterator<Item = &'a EventRecord>, day: N
     out.sort_by(|a, b| {
         let ad = a.1.data.as_ref().map(|d| d.all_day).unwrap_or(false);
         let bd = b.1.data.as_ref().map(|d| d.all_day).unwrap_or(false);
-        bd.cmp(&ad).then(a.0.start.cmp(&b.0.start)).then(a.0.event_id.cmp(&b.0.event_id))
+        bd.cmp(&ad)
+            .then(a.0.start.cmp(&b.0.start))
+            .then(a.0.event_id.cmp(&b.0.event_id))
     });
     out
 }
@@ -95,7 +111,11 @@ pub struct DueReminder {
 impl DueReminder {
     /// 去重用的键：同一条日程的同一次发生只提醒一次。
     pub fn key(&self) -> String {
-        format!("{}@{}", self.event_id, self.occurrence_start.format("%Y-%m-%dT%H:%M"))
+        format!(
+            "{}@{}",
+            self.event_id,
+            self.occurrence_start.format("%Y-%m-%dT%H:%M")
+        )
     }
 }
 
@@ -103,7 +123,9 @@ impl DueReminder {
 pub fn remind_time(data: &EventData, occ_start: NaiveDateTime) -> Option<NaiveDateTime> {
     let before = Duration::minutes(data.remind_before_min? as i64);
     let base = if data.all_day {
-        occ_start.date().and_hms_opt(ALL_DAY_REMIND_AT.0, ALL_DAY_REMIND_AT.1, 0)?
+        occ_start
+            .date()
+            .and_hms_opt(ALL_DAY_REMIND_AT.0, ALL_DAY_REMIND_AT.1, 0)?
     } else {
         occ_start
     };
@@ -111,14 +133,20 @@ pub fn remind_time(data: &EventData, occ_start: NaiveDateTime) -> Option<NaiveDa
 }
 
 /// 找出提醒时刻落在 `(after, until]` 里的提醒。
-pub fn due_reminders<'a>(records: impl IntoIterator<Item = &'a EventRecord>, after: NaiveDateTime, until: NaiveDateTime) -> Vec<DueReminder> {
+pub fn due_reminders<'a>(
+    records: impl IntoIterator<Item = &'a EventRecord>,
+    after: NaiveDateTime,
+    until: NaiveDateTime,
+) -> Vec<DueReminder> {
     let mut out = Vec::new();
     if until <= after {
         return out;
     }
     for r in records {
         let Some(d) = &r.data else { continue };
-        let Some(before) = d.remind_before_min else { continue };
+        let Some(before) = d.remind_before_min else {
+            continue;
+        };
         // 提醒时刻在 (after, until] → 发生时刻在 (after + before, until + before + 一天的余量]
         let pad = Duration::minutes(before as i64) + Duration::days(1);
         for o in occurrences(&r.id, d, after - Duration::days(1), until + pad) {
@@ -135,7 +163,11 @@ pub fn due_reminders<'a>(records: impl IntoIterator<Item = &'a EventRecord>, aft
             }
         }
     }
-    out.sort_by(|a, b| a.remind_at.cmp(&b.remind_at).then(a.event_id.cmp(&b.event_id)));
+    out.sort_by(|a, b| {
+        a.remind_at
+            .cmp(&b.remind_at)
+            .then(a.event_id.cmp(&b.event_id))
+    });
     out
 }
 
@@ -144,17 +176,41 @@ mod tests {
     use super::*;
 
     fn dt(y: i32, m: u32, d: u32, h: u32, mi: u32) -> NaiveDateTime {
-        NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, mi, 0).unwrap()
+        NaiveDate::from_ymd_opt(y, m, d)
+            .unwrap()
+            .and_hms_opt(h, mi, 0)
+            .unwrap()
     }
 
-    fn ev(start: NaiveDateTime, end: NaiveDateTime, repeat: Repeat, remind: Option<u32>) -> EventData {
-        EventData { title: "t".into(), notes: String::new(), all_day: false, start, end, repeat, remind_before_min: remind }
+    fn ev(
+        start: NaiveDateTime,
+        end: NaiveDateTime,
+        repeat: Repeat,
+        remind: Option<u32>,
+    ) -> EventData {
+        EventData {
+            title: "t".into(),
+            notes: String::new(),
+            all_day: false,
+            start,
+            end,
+            repeat,
+            remind_before_min: remind,
+        }
     }
 
     #[test]
     fn single_event() {
-        let e = ev(dt(2026, 11, 2, 9, 0), dt(2026, 11, 2, 10, 0), Repeat::None, None);
-        assert_eq!(occurrences("e", &e, dt(2026, 11, 1, 0, 0), dt(2026, 11, 8, 0, 0)).len(), 1);
+        let e = ev(
+            dt(2026, 11, 2, 9, 0),
+            dt(2026, 11, 2, 10, 0),
+            Repeat::None,
+            None,
+        );
+        assert_eq!(
+            occurrences("e", &e, dt(2026, 11, 1, 0, 0), dt(2026, 11, 8, 0, 0)).len(),
+            1
+        );
         assert!(occurrences("e", &e, dt(2026, 11, 3, 0, 0), dt(2026, 11, 8, 0, 0)).is_empty());
         // 结束边界不含。
         assert!(occurrences("e", &e, dt(2026, 11, 2, 10, 0), dt(2026, 11, 2, 11, 0)).is_empty());
@@ -166,30 +222,78 @@ mod tests {
         let start = dt(2026, 11, 2, 9, 0);
         let end = dt(2026, 11, 2, 9, 30);
         let week = (dt(2026, 11, 2, 0, 0), dt(2026, 11, 9, 0, 0));
-        assert_eq!(occurrences("e", &ev(start, end, Repeat::Daily, None), week.0, week.1).len(), 7);
-        let weekly = occurrences("e", &ev(start, end, Repeat::Weekly, None), dt(2026, 11, 1, 0, 0), dt(2026, 11, 30, 0, 0));
-        assert_eq!(weekly.iter().map(|o| o.start.day()).collect::<Vec<_>>(), vec![2, 9, 16, 23]);
+        assert_eq!(
+            occurrences("e", &ev(start, end, Repeat::Daily, None), week.0, week.1).len(),
+            7
+        );
+        let weekly = occurrences(
+            "e",
+            &ev(start, end, Repeat::Weekly, None),
+            dt(2026, 11, 1, 0, 0),
+            dt(2026, 11, 30, 0, 0),
+        );
+        assert_eq!(
+            weekly.iter().map(|o| o.start.day()).collect::<Vec<_>>(),
+            vec![2, 9, 16, 23]
+        );
         let wd = occurrences("e", &ev(start, end, Repeat::Weekdays, None), week.0, week.1);
         assert_eq!(wd.len(), 5);
-        assert!(wd.iter().all(|o| o.start.weekday().num_days_from_monday() < 5));
+        assert!(wd
+            .iter()
+            .all(|o| o.start.weekday().num_days_from_monday() < 5));
         // 不早于第一次。
-        assert!(occurrences("e", &ev(start, end, Repeat::Daily, None), dt(2026, 10, 1, 0, 0), dt(2026, 11, 1, 0, 0)).is_empty());
+        assert!(occurrences(
+            "e",
+            &ev(start, end, Repeat::Daily, None),
+            dt(2026, 10, 1, 0, 0),
+            dt(2026, 11, 1, 0, 0)
+        )
+        .is_empty());
     }
 
     #[test]
     fn overnight_event_seen_next_morning() {
-        let e = ev(dt(2026, 11, 2, 23, 0), dt(2026, 11, 3, 1, 0), Repeat::None, None);
-        assert_eq!(occurrences("e", &e, dt(2026, 11, 3, 0, 0), dt(2026, 11, 4, 0, 0)).len(), 1);
+        let e = ev(
+            dt(2026, 11, 2, 23, 0),
+            dt(2026, 11, 3, 1, 0),
+            Repeat::None,
+            None,
+        );
+        assert_eq!(
+            occurrences("e", &e, dt(2026, 11, 3, 0, 0), dt(2026, 11, 4, 0, 0)).len(),
+            1
+        );
     }
 
     #[test]
     fn agenda_sorting() {
         let mk = |id: &str, data: EventData| EventRecord::create(id, "A", data, 0);
-        let mut all_day = ev(dt(2026, 11, 2, 0, 0), dt(2026, 11, 3, 0, 0), Repeat::None, None);
+        let mut all_day = ev(
+            dt(2026, 11, 2, 0, 0),
+            dt(2026, 11, 3, 0, 0),
+            Repeat::None,
+            None,
+        );
         all_day.all_day = true;
         let recs = [
-            mk("late", ev(dt(2026, 11, 2, 15, 0), dt(2026, 11, 2, 16, 0), Repeat::None, None)),
-            mk("early", ev(dt(2026, 11, 2, 8, 0), dt(2026, 11, 2, 9, 0), Repeat::None, None)),
+            mk(
+                "late",
+                ev(
+                    dt(2026, 11, 2, 15, 0),
+                    dt(2026, 11, 2, 16, 0),
+                    Repeat::None,
+                    None,
+                ),
+            ),
+            mk(
+                "early",
+                ev(
+                    dt(2026, 11, 2, 8, 0),
+                    dt(2026, 11, 2, 9, 0),
+                    Repeat::None,
+                    None,
+                ),
+            ),
             mk("allday", all_day),
         ];
         let ids: Vec<_> = day_agenda(recs.iter(), NaiveDate::from_ymd_opt(2026, 11, 2).unwrap())
@@ -201,7 +305,17 @@ mod tests {
 
     #[test]
     fn reminders_fire_once_in_window() {
-        let r = EventRecord::create("e", "A", ev(dt(2026, 11, 2, 9, 0), dt(2026, 11, 2, 10, 0), Repeat::Weekdays, Some(15)), 0);
+        let r = EventRecord::create(
+            "e",
+            "A",
+            ev(
+                dt(2026, 11, 2, 9, 0),
+                dt(2026, 11, 2, 10, 0),
+                Repeat::Weekdays,
+                Some(15),
+            ),
+            0,
+        );
         let due = due_reminders([&r], dt(2026, 11, 2, 8, 44), dt(2026, 11, 2, 8, 45));
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].remind_at, dt(2026, 11, 2, 8, 45));
@@ -211,22 +325,53 @@ mod tests {
         // 周六不提醒。
         assert!(due_reminders([&r], dt(2026, 11, 7, 0, 0), dt(2026, 11, 8, 0, 0)).is_empty());
         // 跨午夜的窗口：00:10 的日程提前 30 分钟，在前一天 23:40 提醒。
-        let mid = EventRecord::create("m", "A", ev(dt(2026, 11, 3, 0, 10), dt(2026, 11, 3, 0, 40), Repeat::None, Some(30)), 0);
-        assert_eq!(due_reminders([&mid], dt(2026, 11, 2, 23, 0), dt(2026, 11, 2, 23, 59)).len(), 1);
+        let mid = EventRecord::create(
+            "m",
+            "A",
+            ev(
+                dt(2026, 11, 3, 0, 10),
+                dt(2026, 11, 3, 0, 40),
+                Repeat::None,
+                Some(30),
+            ),
+            0,
+        );
+        assert_eq!(
+            due_reminders([&mid], dt(2026, 11, 2, 23, 0), dt(2026, 11, 2, 23, 59)).len(),
+            1
+        );
     }
 
     #[test]
     fn all_day_reminder_time() {
-        let mut d = ev(dt(2026, 11, 2, 0, 0), dt(2026, 11, 3, 0, 0), Repeat::None, Some(60));
+        let mut d = ev(
+            dt(2026, 11, 2, 0, 0),
+            dt(2026, 11, 3, 0, 0),
+            Repeat::None,
+            Some(60),
+        );
         d.all_day = true;
-        assert_eq!(remind_time(&d, dt(2026, 11, 2, 0, 0)), Some(dt(2026, 11, 2, 8, 0)));
+        assert_eq!(
+            remind_time(&d, dt(2026, 11, 2, 0, 0)),
+            Some(dt(2026, 11, 2, 8, 0))
+        );
         d.remind_before_min = None;
         assert_eq!(remind_time(&d, dt(2026, 11, 2, 0, 0)), None);
     }
 
     #[test]
     fn deleted_events_never_remind() {
-        let mut r = EventRecord::create("e", "A", ev(dt(2026, 11, 2, 9, 0), dt(2026, 11, 2, 10, 0), Repeat::Daily, Some(5)), 0);
+        let mut r = EventRecord::create(
+            "e",
+            "A",
+            ev(
+                dt(2026, 11, 2, 9, 0),
+                dt(2026, 11, 2, 10, 0),
+                Repeat::Daily,
+                Some(5),
+            ),
+            0,
+        );
         r.delete("A", 1);
         assert!(due_reminders([&r], dt(2026, 11, 2, 0, 0), dt(2026, 11, 9, 0, 0)).is_empty());
     }

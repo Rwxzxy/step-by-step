@@ -139,7 +139,12 @@ pub fn excerpt(s: &str, max: usize) -> String {
 }
 
 impl AgentSession {
-    pub fn new(agent: AgentKind, session_id: impl Into<String>, cwd: impl Into<String>, now: i64) -> Self {
+    pub fn new(
+        agent: AgentKind,
+        session_id: impl Into<String>,
+        cwd: impl Into<String>,
+        now: i64,
+    ) -> Self {
         AgentSession {
             agent,
             session_id: session_id.into(),
@@ -184,7 +189,11 @@ impl AgentSession {
 
     /// 计划完成进度 (已完成, 总数)。
     pub fn plan_progress(&self) -> (usize, usize) {
-        let done = self.plan.iter().filter(|p| p.status == PlanStatus::Completed).count();
+        let done = self
+            .plan
+            .iter()
+            .filter(|p| p.status == PlanStatus::Completed)
+            .count();
         (done, self.plan.len())
     }
 }
@@ -251,11 +260,26 @@ mod tests {
 
     #[test]
     fn cues_only_on_transition() {
-        assert_eq!(cue_for_transition(SessionStatus::Running, SessionStatus::Done), Some(Cue::Done));
-        assert_eq!(cue_for_transition(SessionStatus::Done, SessionStatus::Done), None);
-        assert_eq!(cue_for_transition(SessionStatus::Running, SessionStatus::Waiting), Some(Cue::Waiting));
-        assert_eq!(cue_for_transition(SessionStatus::Running, SessionStatus::Error), Some(Cue::Error));
-        assert_eq!(cue_for_transition(SessionStatus::Idle, SessionStatus::Running), None);
+        assert_eq!(
+            cue_for_transition(SessionStatus::Running, SessionStatus::Done),
+            Some(Cue::Done)
+        );
+        assert_eq!(
+            cue_for_transition(SessionStatus::Done, SessionStatus::Done),
+            None
+        );
+        assert_eq!(
+            cue_for_transition(SessionStatus::Running, SessionStatus::Waiting),
+            Some(Cue::Waiting)
+        );
+        assert_eq!(
+            cue_for_transition(SessionStatus::Running, SessionStatus::Error),
+            Some(Cue::Error)
+        );
+        assert_eq!(
+            cue_for_transition(SessionStatus::Idle, SessionStatus::Running),
+            None
+        );
     }
 
     #[test]

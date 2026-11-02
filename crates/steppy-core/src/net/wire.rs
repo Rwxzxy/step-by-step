@@ -26,13 +26,23 @@ pub struct PeerInfo {
 pub enum WireMsg {
     Hello(PeerInfo),
     /// 发送方机器上的全部 Agent 会话（替换接收方保存的那台机器的会话列表）。
-    AgentSnapshot { sessions: Vec<AgentSession> },
-    AgentUpsert { session: AgentSession },
-    AgentRemove { key: String },
+    AgentSnapshot {
+        sessions: Vec<AgentSession>,
+    },
+    AgentUpsert {
+        session: AgentSession,
+    },
+    AgentRemove {
+        key: String,
+    },
     /// 日程记录（连接时发送全部，之后发送变化）。
-    Calendar { records: Vec<EventRecord> },
+    Calendar {
+        records: Vec<EventRecord>,
+    },
     /// 家庭组状态（成员、组密钥、排列）。
-    Group { state: GroupState },
+    Group {
+        state: GroupState,
+    },
     /// 你已被移出家庭组。
     Kicked,
     Pet(PetMsg),
@@ -59,7 +69,9 @@ mod tests {
     fn roundtrip() {
         let msgs = vec![
             WireMsg::Ping,
-            WireMsg::AgentUpsert { session: AgentSession::new(AgentKind::Codex, "s", "/p", 1) },
+            WireMsg::AgentUpsert {
+                session: AgentSession::new(AgentKind::Codex, "s", "/p", 1),
+            },
             WireMsg::Hello(PeerInfo {
                 machine_name: "m".into(),
                 owner_name: "o".into(),

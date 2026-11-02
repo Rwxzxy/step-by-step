@@ -27,7 +27,9 @@ impl QuietPeriod {
         if !self.enabled {
             return false;
         }
-        let (Some(s), Some(e)) = (parse_hm(&self.start), parse_hm(&self.end)) else { return false };
+        let (Some(s), Some(e)) = (parse_hm(&self.start), parse_hm(&self.end)) else {
+            return false;
+        };
         if s == e {
             return false;
         }
@@ -53,7 +55,11 @@ mod tests {
     use super::*;
 
     fn p(s: &str, e: &str) -> QuietPeriod {
-        QuietPeriod { start: s.into(), end: e.into(), enabled: true }
+        QuietPeriod {
+            start: s.into(),
+            end: e.into(),
+            enabled: true,
+        }
     }
     fn t(h: u32, m: u32) -> NaiveTime {
         NaiveTime::from_hms_opt(h, m, 0).unwrap()
@@ -85,7 +91,10 @@ mod tests {
         assert!(!q.contains(t(23, 0)));
         assert!(!p("bad", "08:00").contains(t(7, 0)));
         assert!(!p("08:00", "08:00").contains(t(8, 0)));
-        assert!(is_quiet(&[p("01:00", "02:00"), p("22:00", "23:00")], t(22, 30)));
+        assert!(is_quiet(
+            &[p("01:00", "02:00"), p("22:00", "23:00")],
+            t(22, 30)
+        ));
         assert!(!is_quiet(&[], t(22, 30)));
     }
 }
