@@ -4,6 +4,7 @@ mod agents_rt;
 mod calendar_rt;
 mod commands;
 mod e2e;
+mod holiday_rt;
 mod integrate;
 mod local_api;
 mod net_rt;
@@ -94,6 +95,7 @@ pub fn run() {
             }
             agents_rt::start(state.clone(), agent_rx);
             calendar_rt::start_reminders(state.clone());
+            holiday_rt::start(state.clone());
             net_rt::start(state.clone());
             pet_rt::start(state.clone());
             // 没有系统托盘的环境（比如某些 Linux 桌面）：不影响其他功能。
@@ -148,6 +150,7 @@ pub fn run() {
             commands::open_panel,
             commands::get_autostart,
             commands::set_autostart,
+            commands::list_holidays,
         ])
         .build(tauri::generate_context!())
         .expect("启动步步失败");

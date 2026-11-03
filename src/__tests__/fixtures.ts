@@ -40,6 +40,7 @@ export function snapshot(p: Partial<Snapshot> = {}): Snapshot {
     quiet_now: false,
     discovered_unpaired: 0,
     net_port: 47900,
+    holiday: null,
     ...p,
   };
 }

@@ -83,6 +83,29 @@ export interface PetStatus {
   right_neighbor: string | null;
 }
 
+export interface ActiveHoliday {
+  /** 主题 id：spring_festival / mid_autumn / … / custom */
+  id: string;
+  name: string;
+  greeting: string;
+  main_day: boolean;
+  /** 正日子 "YYYY-MM-DD" */
+  date: string;
+}
+
+export interface HolidayInfo {
+  id: string;
+  name: string;
+  next_date: string | null;
+}
+
+export interface CustomHoliday {
+  name: string;
+  month: number;
+  day: number;
+  greeting: string;
+}
+
 export interface Snapshot {
   me: { node_id: string; machine_name: string; owner_name: string; hue: number };
   machines: MachineView[];
@@ -93,6 +116,7 @@ export interface Snapshot {
   quiet_now: boolean;
   discovered_unpaired: number;
   net_port: number;
+  holiday: ActiveHoliday | null;
 }
 
 export interface QuietPeriod {
@@ -118,6 +142,10 @@ export interface Settings {
   manual_peers: string[];
   net_port: number;
   onboarded: boolean;
+  holiday_theme: boolean;
+  holiday_preview: string | null;
+  custom_holidays: CustomHoliday[];
+  last_holiday_greeting: string | null;
 }
 
 export interface AgentIntegration {
@@ -149,6 +177,7 @@ export interface WindowInfo {
   machine_name: string;
   hue: number;
   frame: FramePayload | null;
+  holiday: ActiveHoliday | null;
 }
 
 export interface BubbleAction {
@@ -159,7 +188,7 @@ export interface BubbleAction {
 export interface Bubble {
   id: string;
   text: string;
-  kind: "done" | "waiting" | "error" | "calendar" | "info";
+  kind: "done" | "waiting" | "error" | "calendar" | "info" | "holiday";
   actions: BubbleAction[];
   ttl_ms: number;
 }

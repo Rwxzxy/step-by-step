@@ -239,6 +239,8 @@ html.pet-window #root {
 .bubble.kind-waiting { border-color: #e39a1b; }
 .bubble.kind-error { border-color: #d0453f; }
 .bubble.kind-calendar { border-color: #4f7fd6; }
+.bubble.kind-holiday { border-color: var(--accent, #d8342a); }
+.bubble.kind-holiday::after { border-color: var(--accent, #d8342a); }
 .bubble.kind-done::after { border-color: #3a9a5b; }
 .bubble.kind-waiting::after { border-color: #e39a1b; }
 .bubble.kind-error::after { border-color: #d0453f; }

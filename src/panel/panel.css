@@ -705,3 +705,7 @@ h3 {
   max-width: 420px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
 }
+.tag.holiday {
+  background: #fde2df;
+  color: #a2271d;
+}

@@ -2208,6 +2208,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy_static"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3871,6 +3877,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "toml_edit 0.22.27",
+ "tyme4rs",
  "uuid",
  "x25519-dalek",
 ]
@@ -4784,6 +4791,16 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "tyme4rs"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8a7e9021709b4a47db2fe1c5ee94f1ae9f50bbf96c9884be5dbb225297f4c84"
+dependencies = [
+ "lazy_static",
+ "regex",
+]
 
 [[package]]
 name = "typeid"

@@ -70,6 +70,8 @@ pub struct Snapshot {
     /// 局域网里发现的、还没配对的步步数量。
     pub discovered_unpaired: usize,
     pub net_port: u16,
+    /// 当前节日主题。
+    pub holiday: Option<steppy_core::holiday::ActiveHoliday>,
 }
 
 fn sorted(mut v: Vec<AgentSession>) -> Vec<AgentSession> {
@@ -173,6 +175,7 @@ pub fn build_snapshot(state: &Shared) -> Snapshot {
         quiet_now: notify::quiet_now(state),
         discovered_unpaired,
         net_port: state.net.port(),
+        holiday: crate::holiday_rt::current(state),
     }
 }
 
@@ -193,6 +196,7 @@ pub fn save_settings(state: State<'_, Shared>, settings: Settings) -> R<Settings
     *state.settings.write().unwrap() = s.clone();
     s.save();
     net_rt::update_my_info(&state);
+    crate::holiday_rt::refresh(&state);
     if let Some(w) = state.app.get_webview_window("pet") {
         let _ = w.emit("pet://appearance", ());
     }
@@ -422,4 +426,9 @@ pub fn set_autostart(app: AppHandle, enable: bool) -> R<bool> {
     }
     crate::tray::sync_autostart(&app);
     Ok(al.is_enabled().unwrap_or(enable))
+}
+
+#[tauri::command]
+pub fn list_holidays() -> Vec<crate::holiday_rt::HolidayInfo> {
+    crate::holiday_rt::list()
 }

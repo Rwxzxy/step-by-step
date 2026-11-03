@@ -1,5 +1,6 @@
 // 步步：原创的圆滚滚小团子，头顶一棵小芽。全部用 SVG 画，动作由 CSS 动画驱动。
 import type { Anim, Side } from "../types";
+import { HolidayOverlay, type ThemeAsset } from "../themes/holidays";
 
 interface Props {
   anim: Anim;
@@ -8,6 +9,10 @@ interface Props {
   size?: number;
   /** 日历上显示的日期（看日历动作）。 */
   day?: number;
+  /** 节日主题 id（没有节日时为空）。 */
+  holiday?: string | null;
+  /** 节日的正式美术资源（manifest 里登记的），没有时用占位图形。 */
+  holidayAsset?: ThemeAsset;
 }
 
 type Eyes = "open" | "closed" | "happy" | "wide";
@@ -26,7 +31,7 @@ function eyesFor(anim: Anim): Eyes {
   }
 }
 
-export function PetSprite({ anim, facing, hue, size = 112, day }: Props) {
+export function PetSprite({ anim, facing, hue, size = 112, day, holiday, holidayAsset }: Props) {
   const body = `hsl(${hue} 70% 86%)`;
   const belly = `hsl(${hue} 75% 93%)`;
   const line = `hsl(${hue} 40% 32%)`;
@@ -48,6 +53,7 @@ export function PetSprite({ anim, facing, hue, size = 112, day }: Props) {
     >
       <ellipse className="pet-shadow" cx="60" cy="113" rx="30" ry="4" fill="rgba(0,0,0,0.16)" />
       <g className="pet-flip">
+        {holiday && holidayAsset?.layer === "back" && <HolidayOverlay id={holiday} asset={holidayAsset} />}
         <g className="pet-feet">
           <ellipse className="foot foot-l" cx="46" cy="105" rx="9" ry="6" fill={line} />
           <ellipse className="foot foot-r" cx="74" cy="105" rx="9" ry="6" fill={line} />
@@ -116,6 +122,7 @@ export function PetSprite({ anim, facing, hue, size = 112, day }: Props) {
             <ellipse cx="78" cy="95" rx="6" ry="7.5" fill={body} stroke={line} strokeWidth="2.5" />
           </g>
         )}
+        {holiday && holidayAsset?.layer !== "back" && <HolidayOverlay id={holiday} asset={holidayAsset} />}
       </g>
       {anim === "sleep" && (
         <g className="zzz" fill={line} fontWeight="700">

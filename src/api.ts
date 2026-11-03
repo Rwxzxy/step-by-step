@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AgendaItem,
+  HolidayInfo,
   EventData,
   EventRecord,
   IntegrationStatus,
@@ -45,6 +46,8 @@ export const api = {
   petSendGuestHome: (owner: string) => invoke<void>("pet_send_guest_home", { owner }),
   bubbleAction: (bubbleId: string, action: string) => invoke<void>("bubble_action", { bubbleId, action }),
   openPanel: (tab?: string) => invoke<void>("open_panel", { tab }),
+
+  listHolidays: () => invoke<HolidayInfo[]>("list_holidays"),
 
   getAutostart: () => invoke<boolean>("get_autostart"),
   setAutostart: (enable: boolean) => invoke<boolean>("set_autostart", { enable }),

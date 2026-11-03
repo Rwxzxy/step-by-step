@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use steppy_core::holiday::CustomHoliday;
 use steppy_core::quiet::QuietPeriod;
 
 use crate::storage;
@@ -42,6 +43,14 @@ pub struct Settings {
     pub net_port: u16,
     /// 首次运行引导是否完成。
     pub onboarded: bool,
+    /// 节日时自动切换宠物外观。
+    pub holiday_theme: bool,
+    /// 预览某个节日的外观（不为空时无视日期）。
+    pub holiday_preview: Option<String>,
+    /// 自定义纪念日（公历，每年重复）。
+    pub custom_holidays: Vec<CustomHoliday>,
+    /// 上一次说过祝福语的节日（`日期:id`），避免重复。
+    pub last_holiday_greeting: Option<String>,
 }
 
 fn default_machine_name() -> String {
@@ -80,6 +89,10 @@ impl Default for Settings {
             manual_peers: Vec::new(),
             net_port: 47900,
             onboarded: false,
+            holiday_theme: true,
+            holiday_preview: None,
+            custom_holidays: Vec::new(),
+            last_holiday_greeting: None,
         }
     }
 }
@@ -114,6 +127,14 @@ impl Settings {
             self.net_port = 47900;
         }
         self.quiet_periods.retain(|p| p.is_valid());
+        self.custom_holidays.retain(|c| {
+            !c.name.trim().is_empty()
+                && chrono::NaiveDate::from_ymd_opt(2024, c.month, c.day).is_some()
+        });
+        for c in &mut self.custom_holidays {
+            c.name = c.name.trim().chars().take(20).collect();
+            c.greeting = c.greeting.trim().chars().take(60).collect();
+        }
     }
 
     pub fn shares_content_with(&self, node: &str) -> bool {

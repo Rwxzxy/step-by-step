@@ -13,6 +13,7 @@
 pub mod agents;
 pub mod calendar;
 pub mod handoff;
+pub mod holiday;
 pub mod install;
 pub mod net;
 pub mod pet;

@@ -1,7 +1,7 @@
 // 设置：基本、提醒与免打扰、接入 Claude / Codex、家庭组、机器排列、串门、隐私。
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import type { IntegrationStatus, QuietPeriod, Settings, Snapshot } from "../types";
+import type { CustomHoliday, HolidayInfo, IntegrationStatus, QuietPeriod, Settings, Snapshot } from "../types";
 import { PetSprite } from "../pet/PetSprite";
 
 export function SettingsView({ snap, notify }: { snap: Snapshot; notify: (m: string) => void }) {
@@ -76,10 +76,76 @@ export function SettingsView({ snap, notify }: { snap: Snapshot; notify: (m: str
         <QuietEditor periods={s.quiet_periods} onChange={(q) => save({ quiet_periods: q })} />
       </section>
 
+      <HolidaySection settings={s} snap={snap} save={save} />
+
       <Integrations notify={notify} />
 
       <Group snap={snap} settings={s} save={save} notify={notify} />
     </div>
+  );
+}
+
+export function HolidaySection({ settings, snap, save }: { settings: Settings; snap: Snapshot; save: (p: Partial<Settings>) => void }) {
+  const [list, setList] = useState<HolidayInfo[]>([]);
+  useEffect(() => {
+    api.listHolidays().then(setList).catch(() => undefined);
+  }, []);
+  const custom = settings.custom_holidays;
+  const setCustom = (c: CustomHoliday[]) => save({ custom_holidays: c });
+  const update = (i: number, p: Partial<CustomHoliday>) => setCustom(custom.map((x, j) => (j === i ? { ...x, ...p } : x)));
+  const days = (m: number) => new Date(2024, m, 0).getDate();
+  return (
+    <section className="card" aria-labelledby="holiday-title">
+      <h2 id="holiday-title">
+        节日主题 {snap.holiday && <span className="tag holiday">现在：{snap.holiday.name}</span>}
+      </h2>
+      <Toggle label="节日时自动切换宠物外观，并在当天送上祝福" checked={settings.holiday_theme} onChange={(v) => save({ holiday_theme: v })} />
+      <p className="muted small">
+        包括春节（除夕到初七）、元宵、清明、端午、七夕、中秋、重阳等农历节日，以及元旦、情人节、劳动节、儿童节、国庆、万圣节、圣诞。正式美术资源还没放进来时显示占位图形。
+      </p>
+      <label className="inline">
+        预览
+        <select
+          aria-label="预览节日外观"
+          value={settings.holiday_preview ?? ""}
+          onChange={(e) => save({ holiday_preview: e.target.value || null })}
+        >
+          <option value="">不预览（按日期自动切换）</option>
+          {list.map((h) => (
+            <option key={h.id} value={h.id}>
+              {h.name}
+              {h.next_date ? `（${h.next_date.slice(5).replace("-", "月")}日）` : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <h3>自定义纪念日</h3>
+      <p className="muted small">比如家人的生日（公历，每年重复）。当天宠物会换上纪念日外观并送上祝福。</p>
+      {custom.map((c, i) => (
+        <div className="row" key={i}>
+          <input aria-label="名称" placeholder="名称" value={c.name} onChange={(e) => update(i, { name: e.target.value })} />
+          <select aria-label="月" value={c.month} onChange={(e) => update(i, { month: Number(e.target.value), day: Math.min(c.day, days(Number(e.target.value))) })}>
+            {Array.from({ length: 12 }, (_, k) => (
+              <option key={k + 1} value={k + 1}>
+                {k + 1} 月
+              </option>
+            ))}
+          </select>
+          <select aria-label="日" value={c.day} onChange={(e) => update(i, { day: Number(e.target.value) })}>
+            {Array.from({ length: days(c.month) }, (_, k) => (
+              <option key={k + 1} value={k + 1}>
+                {k + 1} 日
+              </option>
+            ))}
+          </select>
+          <input aria-label="祝福语" placeholder="祝福语（可不填）" value={c.greeting} onChange={(e) => update(i, { greeting: e.target.value })} />
+          <button onClick={() => setCustom(custom.filter((_, j) => j !== i))}>删除</button>
+        </div>
+      ))}
+      <button onClick={() => setCustom([...custom, { name: "生日", month: new Date().getMonth() + 1, day: new Date().getDate(), greeting: "" }])}>
+        + 添加纪念日
+      </button>
+    </section>
   );
 }
 

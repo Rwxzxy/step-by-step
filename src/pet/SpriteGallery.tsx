@@ -2,10 +2,30 @@
 import { useState } from "react";
 import type { Anim } from "../types";
 import { ANIM_LABEL, PetSprite } from "./PetSprite";
+import { HOLIDAY_IDS, useManifest } from "../themes/holidays";
+
+const HOLIDAY_NAME: Record<string, string> = {
+  spring_festival: "春节",
+  lantern: "元宵",
+  qingming: "清明",
+  dragon_boat: "端午",
+  qixi: "七夕",
+  mid_autumn: "中秋",
+  double_ninth: "重阳",
+  new_year: "元旦",
+  valentine: "情人节",
+  labor_day: "劳动节",
+  children: "儿童节",
+  national_day: "国庆",
+  halloween: "万圣节",
+  christmas: "圣诞",
+  custom: "纪念日",
+};
 import "./pet.css";
 
 export function SpriteGallery() {
   const [hue, setHue] = useState(32);
+  const manifest = useManifest();
   return (
     <div style={{ padding: 24, fontFamily: "system-ui, sans-serif", background: "#f7f3ee", minHeight: "100vh" }}>
       <h1 style={{ margin: "0 0 4px" }}>步步 Steppy · 动作预览</h1>
@@ -24,6 +44,16 @@ export function SpriteGallery() {
           <PetSprite anim="walk" facing="left" hue={hue} size={128} />
           <figcaption>朝左走</figcaption>
         </figure>
+      </div>
+      <h2 style={{ margin: "24px 0 4px" }}>节日主题</h2>
+      <p style={{ color: "#857a72" }}>没有正式美术资源的节日显示占位图形（见 docs/themes.md）。</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+        {HOLIDAY_IDS.map((id) => (
+          <figure key={id} style={{ margin: 0, textAlign: "center", background: "#fff", borderRadius: 12, padding: 12 }}>
+            <PetSprite anim="idle" facing="right" hue={hue} size={112} holiday={id} holidayAsset={manifest.themes[id]} />
+            <figcaption>{HOLIDAY_NAME[id]}</figcaption>
+          </figure>
+        ))}
       </div>
     </div>
   );

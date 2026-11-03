@@ -183,6 +183,8 @@ pub struct WindowInfo {
     pub machine_name: String,
     pub hue: u16,
     pub frame: Option<FramePayload>,
+    /// 当前节日主题（来访的宠物也用这台机器的节日主题）。
+    pub holiday: Option<steppy_core::holiday::ActiveHoliday>,
 }
 
 pub fn window_info(state: &Shared, label: &str) -> WindowInfo {
@@ -196,6 +198,7 @@ pub fn window_info(state: &Shared, label: &str) -> WindowInfo {
                 machine_name: v.machine_name.clone(),
                 hue: v.hue,
                 frame,
+                holiday: crate::holiday_rt::current(state),
             };
         }
     }
@@ -206,6 +209,7 @@ pub fn window_info(state: &Shared, label: &str) -> WindowInfo {
         machine_name: s.machine_name,
         hue: s.pet_hue,
         frame,
+        holiday: crate::holiday_rt::current(state),
     }
 }
 

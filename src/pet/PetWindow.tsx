@@ -1,7 +1,8 @@
 // 宠物窗口：渲染宠物和气泡，处理点击 / 拖拽，并把可点击区域告诉后端（其他区域鼠标穿透）。
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, on } from "../api";
-import type { Bubble, FramePayload, WindowInfo } from "../types";
+import type { ActiveHoliday, Bubble, FramePayload, WindowInfo } from "../types";
+import { accentOf, useManifest } from "../themes/holidays";
 import { PetSprite } from "./PetSprite";
 import "./pet.css";
 
@@ -12,12 +13,15 @@ export function PetWindow() {
   const [frame, setFrame] = useState<FramePayload>({ anim: "idle", facing: "right", visible: true });
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [holiday, setHoliday] = useState<ActiveHoliday | null>(null);
+  const manifest = useManifest();
   const stageRef = useRef<HTMLDivElement>(null);
   const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
 
   const loadInfo = useCallback(() => {
     api.petWindowInfo().then((i) => {
       setInfo(i);
+      setHoliday(i.holiday);
       if (i.frame) setFrame(i.frame);
     });
   }, []);
@@ -29,6 +33,7 @@ export function PetWindow() {
       on<FramePayload>("pet://frame", setFrame),
       on<Bubble>("pet://bubble", (b) => setBubbles((list) => [...list.filter((x) => x.id !== b.id), b].slice(-3))),
       on<null>("pet://appearance", () => loadInfo()),
+      on<ActiveHoliday | null>("steppy://theme", setHoliday),
     ];
     return () => {
       unsub.forEach((p) => p.then((f) => f()));
@@ -105,6 +110,7 @@ export function PetWindow() {
       {current && (
         <div
           className={`bubble kind-${current.kind}${guest ? " has-tag" : ""}`}
+          style={current.kind === "holiday" ? ({ "--accent": accentOf(holiday?.id, manifest) } as React.CSSProperties) : undefined}
           data-hit
           role="status"
           onClick={() => current.actions.length === 0 && dismiss(current.id)}
@@ -138,7 +144,13 @@ export function PetWindow() {
         onContextMenu={(e) => e.preventDefault()}
         title={guest && info ? `${info.owner_name}的步步（来自「${info.machine_name}」）` : "点我打开面板，按住可以拖动"}
       >
-        <PetSprite anim={frame.anim} facing={frame.facing} hue={info?.hue ?? 32} />
+        <PetSprite
+          anim={frame.anim}
+          facing={frame.facing}
+          hue={info?.hue ?? 32}
+          holiday={holiday?.id}
+          holidayAsset={holiday ? manifest.themes[holiday.id] : undefined}
+        />
       </div>
     </div>
   );

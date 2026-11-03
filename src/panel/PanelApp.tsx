@@ -61,7 +61,7 @@ export function PanelApp() {
     <div className="app">
       <nav className="sidebar" aria-label="导航">
         <div className="brand">
-          <PetSprite anim="idle" facing="right" hue={snap.me.hue} size={44} />
+          <PetSprite anim="idle" facing="right" hue={snap.me.hue} size={44} holiday={snap.holiday?.id} />
           <div>
             <div className="brand-name">步步</div>
             <div className="brand-en">Steppy</div>
@@ -78,6 +78,11 @@ export function PanelApp() {
         </button>
         <div className="sidebar-foot muted small">
           {snap.me.machine_name}
+          {snap.holiday && (
+            <div className="tag holiday" title={snap.holiday.greeting}>
+              🎉 {snap.holiday.name}
+            </div>
+          )}
           {snap.quiet_now && <div className="tag warn">免打扰中</div>}
         </div>
       </nav>
