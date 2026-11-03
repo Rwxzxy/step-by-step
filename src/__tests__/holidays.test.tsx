@@ -75,6 +75,6 @@ describe("节日主题", () => {
     await userEvent.click(screen.getByText("删除"));
     expect(save).toHaveBeenLastCalledWith({ custom_holidays: [] });
     await userEvent.click(screen.getByText("+ 添加纪念日"));
-    expect(save.mock.calls.at(-1)![0].custom_holidays).toHaveLength(2);
+    expect(save.mock.calls[save.mock.calls.length - 1][0].custom_holidays).toHaveLength(2);
   });
 });
