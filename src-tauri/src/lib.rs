@@ -14,6 +14,7 @@ mod settings;
 mod state;
 mod storage;
 mod tray;
+mod world_rt;
 
 use std::time::Duration;
 
@@ -110,11 +111,10 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // 关闭面板只是隐藏，程序继续在托盘里运行。
+            // 宠物窗口不能被关掉（比如 Alt+F4）；面板关闭时直接销毁以释放内存，程序继续在托盘里运行。
             if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "panel" {
+                if window.label() == "pet" || window.label().starts_with("strip-") {
                     api.prevent_close();
-                    let _ = window.hide();
                 }
             }
         })
@@ -151,6 +151,14 @@ pub fn run() {
             commands::get_autostart,
             commands::set_autostart,
             commands::list_holidays,
+            commands::world_view,
+            commands::world_set,
+            commands::world_clear,
+            commands::get_build_mode,
+            commands::set_build_mode,
+            commands::import_texture_pack,
+            commands::clear_texture_pack,
+            commands::get_textures,
         ])
         .build(tauri::generate_context!())
         .expect("启动步步失败");

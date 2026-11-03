@@ -18,6 +18,7 @@ pub mod install;
 pub mod net;
 pub mod pet;
 pub mod quiet;
+pub mod world;
 
 /// 当前毫秒时间戳（UTC）。
 pub fn now_ms() -> i64 {

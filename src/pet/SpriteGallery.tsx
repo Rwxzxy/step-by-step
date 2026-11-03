@@ -3,6 +3,21 @@ import { useState } from "react";
 import type { Anim } from "../types";
 import { ANIM_LABEL, PetSprite } from "./PetSprite";
 import { HOLIDAY_IDS, useManifest } from "../themes/holidays";
+import { BLOCKS, BLOCK_LABEL, builtinTexture } from "../world/textures";
+import { useEffect, useRef } from "react";
+
+function BlockPreview({ id }: { id: (typeof BLOCKS)[number] }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const ctx = ref.current?.getContext("2d");
+    const tex = builtinTexture(id);
+    if (ctx && tex) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(tex, 0, 0, 48, 48);
+    }
+  }, [id]);
+  return <canvas ref={ref} width={48} height={48} style={{ imageRendering: "pixelated" }} />;
+}
 
 const HOLIDAY_NAME: Record<string, string> = {
   spring_festival: "春节",
@@ -44,6 +59,15 @@ export function SpriteGallery() {
           <PetSprite anim="walk" facing="left" hue={hue} size={128} />
           <figcaption>朝左走</figcaption>
         </figure>
+      </div>
+      <h2 style={{ margin: "24px 0 4px" }}>方块（自带像素纹理）</h2>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        {BLOCKS.map((b) => (
+          <figure key={b} style={{ margin: 0, textAlign: "center", background: "#fff", borderRadius: 10, padding: 8 }}>
+            <BlockPreview id={b} />
+            <figcaption style={{ fontSize: 12 }}>{BLOCK_LABEL[b]}</figcaption>
+          </figure>
+        ))}
       </div>
       <h2 style={{ margin: "24px 0 4px" }}>节日主题</h2>
       <p style={{ color: "#857a72" }}>没有正式美术资源的节日显示占位图形（见 docs/themes.md）。</p>

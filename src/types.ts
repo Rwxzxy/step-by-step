@@ -192,3 +192,20 @@ export interface Bubble {
   actions: BubbleAction[];
   ttl_ms: number;
 }
+
+export interface StripView {
+  key: string;
+  cols: number;
+  rows: number;
+  /** 一格的逻辑像素 */
+  cell: number;
+  /** 从下往上逐行的方块 id（"air" 表示空） */
+  cells: string[];
+  build_mode: boolean;
+}
+
+export interface BuildStatus {
+  build_mode: boolean;
+  blocks: number;
+  textures: number;
+}

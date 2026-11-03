@@ -1,7 +1,7 @@
 // 设置：基本、提醒与免打扰、接入 Claude / Codex、家庭组、机器排列、串门、隐私。
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import type { CustomHoliday, HolidayInfo, IntegrationStatus, QuietPeriod, Settings, Snapshot } from "../types";
+import type { BuildStatus, CustomHoliday, HolidayInfo, IntegrationStatus, QuietPeriod, Settings, Snapshot } from "../types";
 import { PetSprite } from "../pet/PetSprite";
 
 export function SettingsView({ snap, notify }: { snap: Snapshot; notify: (m: string) => void }) {
@@ -76,12 +76,70 @@ export function SettingsView({ snap, notify }: { snap: Snapshot; notify: (m: str
         <QuietEditor periods={s.quiet_periods} onChange={(q) => save({ quiet_periods: q })} />
       </section>
 
+      <BuildSection notify={notify} />
+
       <HolidaySection settings={s} snap={snap} save={save} />
 
       <Integrations notify={notify} />
 
       <Group snap={snap} settings={s} save={save} notify={notify} />
     </div>
+  );
+}
+
+export function BuildSection({ notify }: { notify: (m: string) => void }) {
+  const [st, setSt] = useState<BuildStatus | null>(null);
+  const load = useCallback(() => {
+    api.getBuildMode().then(setSt).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    load();
+    const t = window.setInterval(load, 3000);
+    return () => window.clearInterval(t);
+  }, [load]);
+  if (!st) return null;
+  return (
+    <section className="card" aria-labelledby="build-title">
+      <h2 id="build-title">桌面建造</h2>
+      <p className="muted small">
+        屏幕底部有一条 12 格高的建造带，宠物会在你搭的方块上走、爬一格高的台阶、从边缘跳下来。没有方块时建造带不会创建窗口，不占内存。
+      </p>
+      <div className="row">
+        <button className={st.build_mode ? "" : "primary"} onClick={() => api.setBuildMode(!st.build_mode).then(setSt)}>
+          {st.build_mode ? "退出建造模式" : "进入建造模式"}
+        </button>
+        <span className="muted small">已放置 {st.blocks} 个方块</span>
+        <button
+          className="danger"
+          disabled={st.blocks === 0}
+          onClick={() => window.confirm("清空所有屏幕上的方块？") && api.worldClear(true).then(load)}
+        >
+          全部清空
+        </button>
+      </div>
+      <h3>材质包</h3>
+      <p className="muted small">
+        默认使用步步自带的像素纹理。也可以选择你电脑上的材质包文件夹导入纹理；导入的图片只保存在这台电脑的步步数据目录里，不会同步给其他电脑，也不会上传到任何地方。
+        {st.textures > 0 && ` 已导入 ${st.textures} 种方块的纹理。`}
+      </p>
+      <div className="row">
+        <button
+          onClick={() =>
+            api
+              .importTexturePack()
+              .then((r) => {
+                if (!r) return;
+                notify(`导入了 ${r.matched.length} 种方块的纹理${r.missing.length ? `，${r.missing.length} 种没找到，继续用自带纹理` : ""}`);
+                load();
+              })
+              .catch((e) => notify(String(e)))
+          }
+        >
+          从文件夹导入…
+        </button>
+        {st.textures > 0 && <button onClick={() => api.clearTexturePack().then(load)}>恢复自带纹理</button>}
+      </div>
+    </section>
   );
 }
 

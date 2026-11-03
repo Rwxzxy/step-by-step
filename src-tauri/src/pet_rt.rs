@@ -63,6 +63,8 @@ pub struct PetShared {
     pub visitors: BTreeMap<NodeId, Visitor>,
     /// 当前帧（供前端初始化时查询）。
     pub frames: HashMap<String, FramePayload>,
+    /// 各宠物窗口当前的位置（物理像素，供诊断和端到端测试）。
+    pub positions: HashMap<String, (i32, i32)>,
     restored: bool,
 }
 
@@ -83,6 +85,7 @@ impl PetShared {
             hit: HashMap::new(),
             visitors: BTreeMap::new(),
             frames: HashMap::new(),
+            positions: HashMap::new(),
             restored,
         }
     }
@@ -325,6 +328,9 @@ struct WinState {
     size_checked: Instant,
 }
 
+/// 建造带窗口：(显示器 key, (x, y, 宽, 高) 物理像素)。
+type StripGeo = (String, (i32, i32, u32, u32));
+
 struct Engine {
     state: Shared,
     wins: HashMap<String, WinState>,
@@ -332,6 +338,10 @@ struct Engine {
     /// 主显示器工作区的右侧（宠物第一次出现的位置）。
     home_x: Option<f64>,
     screens_at: Instant,
+    /// 已应用的建造带版本（方块或建造模式变化时重新计算地形和窗口）。
+    world_version: u64,
+    /// 建造带窗口：label → (显示器 key, 物理位置和大小)。
+    strips: HashMap<String, StripGeo>,
     drag: Option<(String, f64, f64)>,
     last_exit_side: Side,
     visit_started: HashMap<NodeId, i64>,
@@ -348,6 +358,8 @@ pub fn start(state: Shared) {
                 wins: HashMap::new(),
                 screens: Vec::new(),
                 home_x: None,
+                world_version: 0,
+                strips: HashMap::new(),
                 screens_at: Instant::now() - Duration::from_secs(10),
                 drag: None,
                 last_exit_side: Side::Right,
@@ -383,35 +395,145 @@ fn label_for_guest(owner: &str) -> String {
 
 impl Engine {
     fn refresh_screens(&mut self) {
-        if self.screens_at.elapsed() < Duration::from_secs(2) && !self.screens.is_empty() {
+        let world_version = crate::world_rt::version();
+        let world_changed = world_version != self.world_version;
+        if !world_changed
+            && self.screens_at.elapsed() < Duration::from_secs(2)
+            && !self.screens.is_empty()
+        {
             return;
         }
         self.screens_at = Instant::now();
-        match self.state.app.available_monitors() {
-            Ok(ms) if !ms.is_empty() => {
-                self.screens = ms
-                    .iter()
-                    .map(|m| {
-                        let wa = m.work_area();
-                        Screen {
-                            work: Rect {
-                                x: wa.position.x,
-                                y: wa.position.y,
-                                w: wa.size.width as i32,
-                                h: wa.size.height as i32,
-                            },
-                            scale: m.scale_factor(),
+        self.world_version = world_version;
+        let Ok(ms) = self.state.app.available_monitors() else {
+            return;
+        };
+        if ms.is_empty() {
+            return;
+        }
+        let mut mons: Vec<(String, Screen)> = ms
+            .iter()
+            .map(|m| {
+                let wa = m.work_area();
+                let scale = m.scale_factor();
+                let key = match m.name() {
+                    Some(n) if !n.is_empty() => {
+                        format!("{n}@{}x{}", m.position().x, m.position().y)
+                    }
+                    _ => format!("{}x{}", m.position().x, m.position().y),
+                };
+                let cols = steppy_core::world::cols_for(wa.size.width as f64 / scale);
+                let world = crate::world_rt::world_for(&key, cols);
+                (
+                    key,
+                    Screen {
+                        work: Rect {
+                            x: wa.position.x,
+                            y: wa.position.y,
+                            w: wa.size.width as i32,
+                            h: wa.size.height as i32,
+                        },
+                        scale,
+                        terrain: world.heights(),
+                        cell: steppy_core::world::CELL * scale,
+                    },
+                )
+            })
+            .collect();
+        mons.sort_by_key(|(_, s)| s.work.x);
+        self.screens = mons.iter().map(|(_, s)| s.clone()).collect();
+        if let Ok(Some(p)) = self.state.app.primary_monitor() {
+            let wa = p.work_area();
+            let w = PET_W * p.scale_factor();
+            self.home_x = Some(wa.position.x as f64 + wa.size.width as f64 - w * 1.5);
+        }
+        self.sync_strips(&mons, world_changed);
+    }
+
+    /// 只给需要的显示器创建建造带窗口（有方块或在建造模式），不需要的销毁。
+    fn sync_strips(&mut self, mons: &[(String, Screen)], world_changed: bool) {
+        let build = crate::world_rt::build_mode();
+        let mut wanted: HashMap<String, StripGeo> = HashMap::new();
+        for (i, (key, s)) in mons.iter().enumerate() {
+            if !crate::world_rt::needs_strip(key) {
+                continue;
+            }
+            let h = (steppy_core::world::ROWS as f64 * steppy_core::world::CELL * s.scale).round()
+                as u32;
+            let geo = (s.work.x, s.work.bottom() - h as i32, s.work.w as u32, h);
+            wanted.insert(format!("strip-{i}"), (key.clone(), geo));
+        }
+        // 销毁不再需要的。
+        let stale: Vec<String> = self
+            .strips
+            .keys()
+            .filter(|l| !wanted.contains_key(*l))
+            .cloned()
+            .collect();
+        for label in stale {
+            self.strips.remove(&label);
+            crate::world_rt::unregister_strip(&label);
+            if let Some(w) = self.window(&label) {
+                let _ = w.destroy();
+            }
+        }
+        let mut created = false;
+        for (label, (key, geo)) in wanted {
+            crate::world_rt::register_strip(&label, &key);
+            let existing = self.strips.get(&label).cloned();
+            if existing.as_ref().map(|e| e.1) != Some(geo) {
+                let win = match self.window(&label) {
+                    Some(w) => w,
+                    None => {
+                        let built = WebviewWindowBuilder::new(
+                            &self.state.app,
+                            &label,
+                            WebviewUrl::App("index.html".into()),
+                        )
+                        .title("步步 · 建造")
+                        .inner_size(400.0, 100.0)
+                        .decorations(false)
+                        .transparent(true)
+                        .shadow(false)
+                        .always_on_top(true)
+                        .skip_taskbar(true)
+                        .resizable(false)
+                        .focused(false)
+                        .visible(false)
+                        .build();
+                        match built {
+                            Ok(w) => {
+                                created = true;
+                                w
+                            }
+                            Err(e) => {
+                                log::error!("创建建造带窗口失败：{e}");
+                                continue;
+                            }
                         }
-                    })
-                    .collect();
-                self.screens.sort_by_key(|s| s.work.x);
-                if let Ok(Some(p)) = self.state.app.primary_monitor() {
-                    let wa = p.work_area();
-                    let w = PET_W * p.scale_factor();
-                    self.home_x = Some(wa.position.x as f64 + wa.size.width as f64 - w * 1.5);
+                    }
+                };
+                let _ = win.set_size(tauri::PhysicalSize::new(geo.2, geo.3));
+                let _ = win.set_position(PhysicalPosition::new(geo.0, geo.1));
+                let _ = win.show();
+                self.strips.insert(label.clone(), (key, geo));
+            }
+            if let Some(w) = self.window(&label) {
+                // 非建造模式下整条都鼠标穿透（必须在窗口显示之后设置）。
+                let _ = w.set_ignore_cursor_events(!build);
+                if world_changed {
+                    let _ = w.emit("world://changed", build);
                 }
             }
-            _ => {}
+        }
+        if created {
+            // 新建的置顶窗口会盖在宠物上面，把宠物重新提到最上层。
+            for label in self.wins.keys() {
+                if let Some(w) = self.window(label) {
+                    let _ = w.set_always_on_top(false);
+                    let _ = w.set_always_on_top(true);
+                }
+            }
         }
     }
 
@@ -862,6 +984,11 @@ impl Engine {
                     w.shown = false;
                 }
             }
+            st.pet
+                .lock()
+                .unwrap()
+                .positions
+                .insert(label.clone(), (frame.x, frame.y));
             let payload = FramePayload {
                 anim: frame.anim,
                 facing: frame.facing,

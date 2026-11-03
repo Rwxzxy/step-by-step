@@ -400,13 +400,38 @@ pub fn open_panel(app: AppHandle, tab: Option<String>) {
     open_panel_window(&app, tab.as_deref().unwrap_or("overview"));
 }
 
+/// 打开面板。面板窗口只在打开时创建、关闭时销毁（不常驻内存）。
 pub fn open_panel_window(app: &AppHandle, tab: &str) {
     if let Some(w) = app.get_webview_window("panel") {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
         let _ = w.emit("steppy://navigate", tab.to_string());
+        return;
     }
+    // 在同步命令（主线程）里直接创建窗口会在 Windows 上死锁，所以放到单独的线程里创建。
+    let app = app.clone();
+    let tab = tab.to_string();
+    std::thread::spawn(move || {
+        static CREATING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = CREATING.lock().unwrap();
+        if app.get_webview_window("panel").is_some() {
+            return;
+        }
+        let url = tauri::WebviewUrl::App(format!("index.html?tab={tab}").into());
+        match tauri::WebviewWindowBuilder::new(&app, "panel", url)
+            .title("步步 Steppy")
+            .inner_size(980.0, 700.0)
+            .min_inner_size(720.0, 520.0)
+            .center()
+            .build()
+        {
+            Ok(w) => {
+                let _ = w.set_focus();
+            }
+            Err(e) => log::error!("打开面板失败：{e}"),
+        }
+    });
 }
 
 // ─────────────── 开机自启 ───────────────
@@ -431,4 +456,71 @@ pub fn set_autostart(app: AppHandle, enable: bool) -> R<bool> {
 #[tauri::command]
 pub fn list_holidays() -> Vec<crate::holiday_rt::HolidayInfo> {
     crate::holiday_rt::list()
+}
+
+// ─────────────── 桌面建造 ───────────────
+
+#[tauri::command]
+pub fn world_view(window: WebviewWindow) -> Option<crate::world_rt::StripView> {
+    crate::world_rt::view(window.label())
+}
+
+#[tauri::command]
+pub fn world_set(window: WebviewWindow, x: usize, y: usize, block: String) -> R<bool> {
+    crate::world_rt::set_block(window.label(), x, y, &block).map_err(err)
+}
+
+/// 清空：`all` 为 true 时清空所有显示器，否则只清空发起请求的建造带。
+#[tauri::command]
+pub fn world_clear(window: WebviewWindow, all: bool) {
+    if all {
+        crate::world_rt::clear(None);
+    } else {
+        crate::world_rt::clear(Some(window.label()));
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BuildStatus {
+    pub build_mode: bool,
+    pub blocks: usize,
+    pub textures: usize,
+}
+
+#[tauri::command]
+pub fn get_build_mode() -> BuildStatus {
+    BuildStatus {
+        build_mode: crate::world_rt::build_mode(),
+        blocks: crate::world_rt::block_count(),
+        textures: crate::world_rt::textures().len(),
+    }
+}
+
+#[tauri::command]
+pub fn set_build_mode(app: AppHandle, on: bool) -> BuildStatus {
+    crate::world_rt::set_build_mode(on);
+    crate::tray::sync_build(on);
+    let _ = app.emit("world://build", on);
+    get_build_mode()
+}
+
+#[tauri::command]
+pub async fn import_texture_pack(app: AppHandle) -> R<Option<crate::world_rt::ImportResult>> {
+    let picked = app.dialog().file().blocking_pick_folder();
+    let Some(p) = picked else { return Ok(None) };
+    let path = p.into_path().map_err(err)?;
+    let r = crate::world_rt::import_pack(&path).map_err(err)?;
+    let _ = app.emit("world://textures", ());
+    Ok(Some(r))
+}
+
+#[tauri::command]
+pub fn clear_texture_pack(app: AppHandle) {
+    crate::world_rt::clear_pack();
+    let _ = app.emit("world://textures", ());
+}
+
+#[tauri::command]
+pub fn get_textures() -> std::collections::HashMap<String, String> {
+    crate::world_rt::textures()
 }

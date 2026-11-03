@@ -12,6 +12,7 @@ use crate::state::Shared;
 
 static TOGGLE: Mutex<Option<MenuItem<Wry>>> = Mutex::new(None);
 static AUTOSTART: Mutex<Option<CheckMenuItem<Wry>>> = Mutex::new(None);
+static BUILD: Mutex<Option<CheckMenuItem<Wry>>> = Mutex::new(None);
 
 pub fn create(app: &App, state: Shared) -> tauri::Result<()> {
     let toggle = MenuItem::with_id(app, "toggle", toggle_label(&state), true, None::<&str>)?;
@@ -19,6 +20,7 @@ pub fn create(app: &App, state: Shared) -> tauri::Result<()> {
     let calendar = MenuItem::with_id(app, "calendar", "日程表", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
     let recall = MenuItem::with_id(app, "recall", "召回宠物", true, None::<&str>)?;
+    let build = CheckMenuItem::with_id(app, "build", "建造模式", true, false, None::<&str>)?;
     let autostart = CheckMenuItem::with_id(
         app,
         "autostart",
@@ -33,11 +35,12 @@ pub fn create(app: &App, state: Shared) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
         &[
-            &toggle, &panel, &calendar, &settings, &sep1, &recall, &autostart, &sep2, &quit,
+            &toggle, &panel, &calendar, &settings, &sep1, &build, &recall, &autostart, &sep2, &quit,
         ],
     )?;
     *TOGGLE.lock().unwrap() = Some(toggle);
     *AUTOSTART.lock().unwrap() = Some(autostart);
+    *BUILD.lock().unwrap() = Some(build);
 
     let icon = app.default_window_icon().cloned();
     let mut builder = TrayIconBuilder::with_id("main")
@@ -74,6 +77,12 @@ pub fn create(app: &App, state: Shared) -> tauri::Result<()> {
                 let enabled = al.is_enabled().unwrap_or(false);
                 let _ = if enabled { al.disable() } else { al.enable() };
                 sync_autostart(app);
+            }
+            "build" => {
+                let on = !crate::world_rt::build_mode();
+                crate::world_rt::set_build_mode(on);
+                sync_build(on);
+                let _ = tauri::Emitter::emit(app, "world://build", on);
             }
             "quit" => app.exit(0),
             _ => {}
@@ -113,5 +122,11 @@ pub fn sync_autostart(app: &AppHandle) {
 pub fn sync_toggle(state: &Shared) {
     if let Some(t) = TOGGLE.lock().unwrap().as_ref() {
         let _ = t.set_text(toggle_label(state));
+    }
+}
+
+pub fn sync_build(on: bool) {
+    if let Some(item) = BUILD.lock().unwrap().as_ref() {
+        let _ = item.set_checked(on);
     }
 }

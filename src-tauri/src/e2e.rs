@@ -62,6 +62,15 @@ fn snapshot(state: &Shared) -> Value {
             .collect::<serde_json::Map<_, _>>()
             .into()
     };
+    let windows: Vec<String> = {
+        use tauri::Manager;
+        state.app.webview_windows().keys().cloned().collect()
+    };
+    let strips: Vec<String> = windows
+        .iter()
+        .filter(|l| l.starts_with("strip-"))
+        .cloned()
+        .collect();
     json!({
         "snapshot": snap,
         "owner_state": owner,
@@ -69,6 +78,10 @@ fn snapshot(state: &Shared) -> Value {
         "frames": frames,
         "calendar": calendar_rt::all_records(state),
         "peers": state.net.connected_peers(),
+        "pet_pos": state.pet.lock().unwrap().positions.get("pet").map(|p| json!([p.0, p.1])),
+        "strips": strips,
+        "windows": windows,
+        "build_mode": crate::world_rt::build_mode(),
         "peer_info": state.peers.lock().unwrap().iter().map(|(k, v)| (k.clone(), serde_json::to_value(&v.info).unwrap_or(Value::Null))).collect::<serde_json::Map<_, _>>(),
     })
 }
@@ -129,6 +142,36 @@ fn call(state: &Shared, cmd: &str, args: Value) -> Result<Value, String> {
         }
         "open_panel" => {
             commands::open_panel_window(&state.app, &s(&args, "tab"));
+            Ok(Value::Null)
+        }
+        "set_build_mode" => {
+            crate::world_rt::set_build_mode(
+                args.get("on").and_then(|v| v.as_bool()).unwrap_or(false),
+            );
+            Ok(Value::Null)
+        }
+        "world_fill" => {
+            // 把某个建造带的最下面几行铺满。
+            let label = s(&args, "label");
+            let rows = args.get("rows").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
+            let block = s(&args, "block");
+            let view = crate::world_rt::view(&label).ok_or("没有这个建造带")?;
+            for y in 0..rows {
+                for x in 0..view.cols {
+                    crate::world_rt::set_block(&label, x, y, &block).map_err(e)?;
+                }
+            }
+            Ok(json!(view.cols))
+        }
+        "world_set" => {
+            let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            crate::world_rt::set_block(&s(&args, "label"), x, y, &s(&args, "block"))
+                .map(Value::Bool)
+                .map_err(e)
+        }
+        "world_clear" => {
+            crate::world_rt::clear(None);
             Ok(Value::Null)
         }
         "recall" => {

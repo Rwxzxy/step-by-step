@@ -25,7 +25,8 @@ export function Overview({ snap, go }: { snap: Snapshot; go: (t: Tab) => void })
 }
 
 export function PanelApp() {
-  const [tab, setTab] = useState<Tab>("overview");
+  // 面板窗口是按需创建的，打开哪个页面由 URL 参数决定。
+  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get("tab") as Tab) || "overview");
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
 

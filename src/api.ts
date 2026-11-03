@@ -3,7 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AgendaItem,
+  BuildStatus,
   HolidayInfo,
+  StripView,
   EventData,
   EventRecord,
   IntegrationStatus,
@@ -48,6 +50,15 @@ export const api = {
   openPanel: (tab?: string) => invoke<void>("open_panel", { tab }),
 
   listHolidays: () => invoke<HolidayInfo[]>("list_holidays"),
+
+  worldView: () => invoke<StripView | null>("world_view"),
+  worldSet: (x: number, y: number, block: string) => invoke<boolean>("world_set", { x, y, block }),
+  worldClear: (all: boolean) => invoke<void>("world_clear", { all }),
+  getBuildMode: () => invoke<BuildStatus>("get_build_mode"),
+  setBuildMode: (on: boolean) => invoke<BuildStatus>("set_build_mode", { on }),
+  importTexturePack: () => invoke<{ matched: string[]; missing: string[] } | null>("import_texture_pack"),
+  clearTexturePack: () => invoke<void>("clear_texture_pack"),
+  getTextures: () => invoke<Record<string, string>>("get_textures"),
 
   getAutostart: () => invoke<boolean>("get_autostart"),
   setAutostart: (enable: boolean) => invoke<boolean>("set_autostart", { enable }),

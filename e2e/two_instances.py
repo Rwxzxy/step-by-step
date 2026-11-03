@@ -227,6 +227,23 @@ def main():
         wait(lambda: idb in a.snap()["peers"] and ida in b.snap()["peers"], "B 重启后自动重连", 60)
         wait(lambda: any(r["id"] == offline_ev for r in b.snap()["calendar"]), "B 补齐离线期间的日程")
 
+        print("桌面建造…")
+        assert "panel" not in a.snap()["windows"], "面板应该按需创建，平时不常驻"
+        assert a.snap()["strips"] == [], "没有方块时不应创建建造带窗口"
+        a.call("set_build_mode", on=True)
+        wait(lambda: len(a.snap()["strips"]) >= 1, "进入建造模式后出现建造带窗口")
+        wait(lambda: a.snap()["pet_pos"] is not None and a.snap()["frames"]["pet"]["anim"] in ("idle", "walk", "sleep"), "宠物站在地面上")
+        y0 = a.snap()["pet_pos"][1]
+        cols = a.call("world_fill", label=a.snap()["strips"][0], rows=2, block="planks")
+        assert cols > 10, cols
+        wait(lambda: a.snap()["pet_pos"][1] == y0 - 48, "铺两层木板后宠物站到了方块上（高 48 像素）")
+        a.call("world_clear")
+        wait(lambda: a.snap()["pet_pos"][1] == y0, "清空后宠物落回地面")
+        a.call("set_build_mode", on=False)
+        wait(lambda: a.snap()["strips"] == [], "退出建造模式且没有方块时，建造带窗口被销毁")
+        a.call("open_panel", tab="overview")
+        wait(lambda: "panel" in a.snap()["windows"], "打开面板时才创建面板窗口")
+
         print("踢出成员…")
         epoch0 = a.snap()["snapshot"]["group"]["epoch"]
         a.call("kick", node=idb)

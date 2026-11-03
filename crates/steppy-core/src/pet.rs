@@ -22,10 +22,39 @@ impl Rect {
 }
 
 /// 一块显示器：工作区（去掉任务栏 / Dock 的区域）和缩放比例。
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Screen {
     pub work: Rect,
     pub scale: f64,
+    /// 这块屏底部建造带每一列的地面高度（格数），为空表示平地。
+    #[serde(default)]
+    pub terrain: Vec<u8>,
+    /// 一格的物理像素大小。
+    #[serde(default)]
+    pub cell: f64,
+}
+
+impl Screen {
+    pub fn flat(work: Rect, scale: f64) -> Screen {
+        Screen {
+            work,
+            scale,
+            terrain: Vec::new(),
+            cell: 0.0,
+        }
+    }
+
+    /// `[x0, x1]`（物理像素）范围内最高的地面高度（像素）。
+    pub fn terrain_height(&self, x0: f64, x1: f64) -> f64 {
+        if self.terrain.is_empty() || self.cell <= 0.0 {
+            return 0.0;
+        }
+        let last = self.terrain.len() as i64 - 1;
+        let c0 = (((x0 - self.work.x as f64) / self.cell).floor() as i64).clamp(0, last) as usize;
+        let c1 = (((x1 - self.work.x as f64) / self.cell).floor() as i64).clamp(0, last) as usize;
+        let (c0, c1) = (c0.min(c1), c0.max(c1));
+        self.terrain[c0..=c1].iter().copied().max().unwrap_or(0) as f64 * self.cell
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -132,6 +161,8 @@ pub struct PetBrain {
     rng: u64,
     last_active_ms: i64,
     pub tuning: Tuning,
+    /// 脚的半宽（物理像素），每帧按窗口宽度更新。
+    feet_half: f64,
 }
 
 fn xorshift(state: &mut u64) -> u64 {
@@ -167,6 +198,7 @@ impl PetBrain {
             rng: seed | 1,
             last_active_ms: 0,
             tuning: Tuning::default(),
+            feet_half: 30.0,
         }
     }
 
@@ -183,7 +215,7 @@ impl PetBrain {
         self.x + win_w * (self.tuning.body_left + self.tuning.body_right) / 2.0
     }
 
-    /// 某个横坐标下的地面：窗口应放的 y（窗口底边贴着工作区底边）。
+    /// 某个横坐标下的地面：窗口应放的 y（窗口底边贴着工作区底边，或者站在方块上）。
     fn ground_y(&self, screens: &[Screen], cx: f64, win_h: f64) -> f64 {
         let s = screen_at(screens, cx).or_else(|| {
             // 不在任何显示器上（比如两块屏之间的缝）：用最近的一块。
@@ -193,8 +225,27 @@ impl PetBrain {
             })
         });
         match s {
-            Some(s) => s.work.bottom() as f64 - win_h,
+            Some(s) => {
+                // 脚的宽度大约是身体的六成。
+                let half = self.feet_half;
+                s.work.bottom() as f64 - s.terrain_height(cx - half, cx + half) - win_h
+            }
             None => 0.0,
+        }
+    }
+
+    /// 一格的物理像素大小（平地时返回 0）。
+    fn cell_at(&self, screens: &[Screen], cx: f64) -> f64 {
+        screen_at(screens, cx).map(|s| s.cell).unwrap_or(0.0)
+    }
+
+    /// 站着不动时地面变了：方块放到脚下就站上去，脚下的方块被拆掉就掉下去。
+    fn settle(&mut self, screens: &[Screen], cx: f64, win_h: f64) {
+        let ground = self.ground_y(screens, cx, win_h);
+        if ground > self.y + 1.0 {
+            self.mode = Mode::Fall { vy: 0.0 };
+        } else {
+            self.y = ground;
         }
     }
 
@@ -412,6 +463,7 @@ impl PetBrain {
         if self.last_active_ms == 0 {
             self.last_active_ms = now;
         }
+        self.feet_half = win_w * (self.tuning.body_right - self.tuning.body_left) * 0.3;
         let mut event = None;
         let cx = self.body_center(win_w);
         let scale = self.scale_at(screens, cx);
@@ -422,20 +474,20 @@ impl PetBrain {
                 if now >= until {
                     self.pick_next(now, screens, win_w, allow_exit);
                 }
-                self.y = self.ground_y(screens, cx, win_h);
+                self.settle(screens, cx, win_h);
             }
             Mode::Sleep { until } => {
                 if now >= until {
                     self.last_active_ms = now;
                     self.mode = Mode::Idle { until: now + 2_000 };
                 }
-                self.y = self.ground_y(screens, cx, win_h);
+                self.settle(screens, cx, win_h);
             }
             Mode::React { until, .. } => {
                 if now >= until {
                     self.mode = Mode::Idle { until: now + 2_000 };
                 }
-                self.y = self.ground_y(screens, cx, win_h);
+                self.settle(screens, cx, win_h);
             }
             Mode::Walk { target, until } => {
                 let dir = if target > cx { 1.0 } else { -1.0 };
@@ -453,8 +505,21 @@ impl PetBrain {
                 if screen_at(screens, ncx).is_none() {
                     self.x -= dir * step;
                     self.mode = Mode::Idle { until: now + 1_500 };
+                } else {
+                    let ground = self.ground_y(screens, ncx, win_h);
+                    let cell = self.cell_at(screens, ncx);
+                    if ground < self.y - cell * 1.05 - 1.0 {
+                        // 前面是两格以上高的墙：爬不上去，退回来歇一会儿。
+                        self.x -= dir * step;
+                        self.mode = Mode::Idle { until: now + 1_500 };
+                    } else if ground > self.y + 1.0 {
+                        // 走到边缘：掉下去。
+                        self.mode = Mode::Fall { vy: 0.0 };
+                    } else {
+                        // 平地或一格台阶：直接走上去。
+                        self.y = ground;
+                    }
                 }
-                self.y = self.ground_y(screens, self.body_center(win_w), win_h);
             }
             Mode::Exit { side } => {
                 let (left, right) = desktop_bounds(screens);
@@ -538,6 +603,8 @@ mod tests {
                     h: 1032,
                 },
                 scale: 1.0,
+                terrain: Vec::new(),
+                cell: 0.0,
             },
             // 右边一块 4K 200% 缩放，位置更低。
             Screen {
@@ -548,8 +615,31 @@ mod tests {
                     h: 2100,
                 },
                 scale: 2.0,
+                terrain: Vec::new(),
+                cell: 0.0,
             },
         ]
+    }
+
+    /// 一块 1920 宽、格子 24 像素的屏，`heights` 是从左往右每列的高度。
+    fn terrain_screen(heights: &[(usize, usize, u8)]) -> Vec<Screen> {
+        let mut terrain = vec![0u8; 80];
+        for &(from, to, h) in heights {
+            for t in &mut terrain[from..to] {
+                *t = h;
+            }
+        }
+        vec![Screen {
+            work: Rect {
+                x: 0,
+                y: 0,
+                w: 1920,
+                h: 1032,
+            },
+            scale: 1.0,
+            terrain,
+            cell: 24.0,
+        }]
     }
 
     fn run(
@@ -677,5 +767,91 @@ mod tests {
         b.place(&s, Some(500.0), W, H);
         let frames = run(&mut b, &s, 120_000, &|_| false);
         assert!(frames.iter().any(|f| f.anim == Anim::Sleep));
+    }
+
+    #[test]
+    fn stands_on_blocks_and_falls_when_removed() {
+        // 第 20-30 列垫高 3 格。
+        let s = terrain_screen(&[(20, 30, 3)]);
+        let mut b = PetBrain::new(21);
+        b.tuning.sleep_after_ms = i64::MAX;
+        // 身体中心放在第 25 列。
+        b.place(&s, Some(25.0 * 24.0 + 12.0), W, H);
+        let f = b.tick(1, 33, &s, W, H, &|_| false);
+        assert_eq!(f.y, 1032 - 72 - 200, "站在三格高的台子上");
+        // 拆掉方块：掉下来，最后落到地面。
+        let flat = terrain_screen(&[]);
+        let frames = run(&mut b, &flat, 2_000, &|_| false);
+        assert!(frames.iter().any(|f| f.anim == Anim::Fall));
+        assert_eq!(frames.last().unwrap().y, 1032 - 200);
+        // 脚下放了方块：直接站上去。
+        let raised = terrain_screen(&[(0, 80, 1)]);
+        let f = b.tick(10_000_000, 33, &raised, W, H, &|_| false);
+        assert_eq!(f.y, 1032 - 24 - 200);
+    }
+
+    #[test]
+    fn climbs_one_step_but_not_walls() {
+        // 左边平地，第 40 列起一格台阶，第 50 列起一堵 4 格高的墙。
+        let s = terrain_screen(&[(40, 50, 1), (50, 80, 4)]);
+        let mut b = PetBrain::new(5);
+        b.tuning.sleep_after_ms = i64::MAX;
+        b.place(&s, Some(30.0 * 24.0), W, H);
+        b.mode = Mode::Walk {
+            target: 70.0 * 24.0,
+            until: i64::MAX,
+        };
+        let mut now = 1;
+        let mut max_cx: f64 = 0.0;
+        for _ in 0..2000 {
+            now += 33;
+            let f = b.tick(now, 33, &s, W, H, &|_| false);
+            max_cx = max_cx.max(f.x as f64 + W / 2.0);
+            if !matches!(b.mode, Mode::Walk { .. }) {
+                break;
+            }
+        }
+        // 走上了一格台阶……
+        assert_eq!(b.y, 1032.0 - 24.0 - 200.0);
+        // ……但被墙挡住了（身体中心没越过墙脚太多）。
+        assert!(max_cx < 50.0 * 24.0, "{max_cx}");
+    }
+
+    #[test]
+    fn walks_off_a_ledge_and_falls() {
+        let s = terrain_screen(&[(0, 30, 2)]);
+        let mut b = PetBrain::new(8);
+        b.tuning.sleep_after_ms = i64::MAX;
+        b.place(&s, Some(20.0 * 24.0), W, H);
+        assert_eq!(b.y, 1032.0 - 48.0 - 200.0);
+        b.mode = Mode::Walk {
+            target: 50.0 * 24.0,
+            until: i64::MAX,
+        };
+        let frames = run(&mut b, &s, 30_000, &|_| false);
+        assert!(frames.iter().any(|f| f.anim == Anim::Fall));
+        assert!(frames.iter().any(|f| f.y == 1032 - 200));
+    }
+
+    #[test]
+    fn terrain_height_footprint() {
+        let s = &terrain_screen(&[(10, 11, 5)])[0];
+        assert_eq!(s.terrain_height(0.0, 100.0), 0.0);
+        assert_eq!(s.terrain_height(230.0, 250.0), 120.0);
+        // 超出范围时夹到最边上的列。
+        assert_eq!(s.terrain_height(-100.0, -50.0), 0.0);
+        assert_eq!(
+            Screen::flat(
+                Rect {
+                    x: 0,
+                    y: 0,
+                    w: 10,
+                    h: 10
+                },
+                1.0
+            )
+            .terrain_height(0.0, 5.0),
+            0.0
+        );
     }
 }
