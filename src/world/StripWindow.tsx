@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, on } from "../api";
 import type { StripView } from "../types";
-import { BLOCKS, BLOCK_LABEL, builtinTexture, loadPackTexture, type BlockId } from "./textures";
+import { BLOCKS, BLOCK_LABEL, TRANSLUCENT, builtinTexture, loadPackTexture, type BlockId } from "./textures";
 import "./strip.css";
 
 type Tex = Record<string, HTMLCanvasElement | null>;
@@ -73,7 +73,17 @@ export function StripWindow() {
         const id = view.cells[y * view.cols + x];
         if (!id || id === "air") continue;
         const tex = pack[id] ?? builtinTexture(id as BlockId);
-        if (tex) ctx.drawImage(tex, x * view.cell, (view.rows - 1 - y) * view.cell, view.cell, view.cell);
+        if (!tex) continue;
+        const px = x * view.cell;
+        const py = (view.rows - 1 - y) * view.cell;
+        ctx.globalAlpha = TRANSLUCENT[id as BlockId] ?? 1;
+        ctx.drawImage(tex, px, py, view.cell, view.cell);
+        // 水面（上面不是水）画一道浅色的边。
+        if (id === "water" && view.cells[(y + 1) * view.cols + x] !== "water") {
+          ctx.fillStyle = "rgba(190, 220, 255, 0.9)";
+          ctx.fillRect(px, py, view.cell, 2);
+        }
+        ctx.globalAlpha = 1;
       }
     }
   }, [view, pack]);

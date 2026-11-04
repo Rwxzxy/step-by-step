@@ -75,6 +75,7 @@ blocks! {
     Flower = 14, "flower", false;
     Bed = 15, "bed", true;
     Workbench = 16, "workbench", true;
+    Water = 17, "water", false;
 }
 
 impl Serialize for Block {
@@ -193,6 +194,46 @@ impl World {
     }
 }
 
+/// 显示器的 key 是“名字@位置”。调整显示器排列、拔插外接屏后位置会变，key 就对不上了。
+/// 给每块新 key 的显示器找一份“没人认领”的旧存档接管：先找同名的，再找列数相同的。
+///
+/// `saved` 是存档里所有非空世界的 (key, 列数)；`known` 是存档里出现过的全部 key（包括清空了的，
+/// 清空过的屏不会去接管别人的存档）；`current` 是现在接着的显示器的 (key, 列数)。
+/// 返回要改名的 (旧 key, 新 key)。
+pub fn adopt_orphans(
+    saved: &[(String, usize)],
+    known: &[String],
+    current: &[(String, usize)],
+) -> Vec<(String, String)> {
+    let name = |k: &str| k.split('@').next().unwrap_or("").to_string();
+    let is_current = |k: &str| current.iter().any(|(c, _)| c == k);
+    let mut orphans: Vec<&(String, usize)> = saved.iter().filter(|(k, _)| !is_current(k)).collect();
+    let mut moves = Vec::new();
+    let newcomers: Vec<&(String, usize)> = current
+        .iter()
+        .filter(|(k, _)| !saved.iter().any(|(s, _)| s == k) && !known.contains(k))
+        .collect();
+    // 两轮：先按名字配对，再按列数配对，避免列数相同的别的屏抢走同名屏的存档。
+    for by_name in [true, false] {
+        for (key, cols) in &newcomers {
+            if moves.iter().any(|(_, to): &(String, String)| to == key) {
+                continue;
+            }
+            let pos = orphans.iter().position(|(k, c)| {
+                if by_name {
+                    key.contains('@') && name(k) == name(key)
+                } else {
+                    c == cols
+                }
+            });
+            if let Some(i) = pos {
+                moves.push((orphans.remove(i).0.clone(), key.clone()));
+            }
+        }
+    }
+    moves
+}
+
 /// 某块屏能放多少列。
 pub fn cols_for(logical_width: f64) -> usize {
     (logical_width / CELL).floor().max(1.0) as usize
@@ -263,6 +304,50 @@ mod tests {
         assert_eq!(Block::from_id("nope"), None);
         assert_eq!(cols_for(1920.0), 80);
         assert_eq!(cols_for(1366.0), 56);
+    }
+
+    #[test]
+    fn adopts_saved_world_after_monitor_rearrange() {
+        let saved = vec![
+            ("DISPLAY1@0x0".to_string(), 80),
+            ("DISPLAY2@1920x0".to_string(), 106),
+        ];
+        // 外接屏挪到左边：两块屏的位置都变了，按名字各自认回自己的存档。
+        let cur = vec![
+            ("DISPLAY2@-2560x0".to_string(), 106),
+            ("DISPLAY1@0x0".to_string(), 80),
+        ];
+        assert_eq!(
+            adopt_orphans(&saved, &[], &cur),
+            vec![(
+                "DISPLAY2@1920x0".to_string(),
+                "DISPLAY2@-2560x0".to_string()
+            )]
+        );
+        // 名字也变了（比如换了接口）：按列数认领。
+        let cur = vec![
+            ("DISPLAY3@1920x0".to_string(), 106),
+            ("DISPLAY1@0x0".to_string(), 80),
+        ];
+        assert_eq!(
+            adopt_orphans(&saved, &[], &cur),
+            vec![("DISPLAY2@1920x0".to_string(), "DISPLAY3@1920x0".to_string())]
+        );
+        // 拔掉外接屏：笔记本自己的存档不受影响，外接屏的存档留着等它回来。
+        let cur = vec![("DISPLAY1@0x0".to_string(), 80)];
+        assert!(adopt_orphans(&saved, &[], &cur).is_empty());
+        // 没有名字的显示器（key 只有位置）不按名字配对。
+        let saved = vec![("0x0".to_string(), 80)];
+        let cur = vec![("100x0".to_string(), 50)];
+        assert!(adopt_orphans(&saved, &[], &cur).is_empty());
+        // 清空过的屏（存档里有它的 key）不接管别人的存档。
+        let saved = vec![("A@0x0".to_string(), 80)];
+        let cur = vec![("B@1920x0".to_string(), 80)];
+        assert!(adopt_orphans(&saved, &["B@1920x0".to_string()], &cur).is_empty());
+        // 一份存档只给一块屏。
+        let saved = vec![("A@0x0".to_string(), 80)];
+        let cur = vec![("B@0x0".to_string(), 80), ("C@1920x0".to_string(), 80)];
+        assert_eq!(adopt_orphans(&saved, &[], &cur).len(), 1);
     }
 
     #[test]

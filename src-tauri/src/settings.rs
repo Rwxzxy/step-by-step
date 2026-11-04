@@ -51,6 +51,10 @@ pub struct Settings {
     pub custom_holidays: Vec<CustomHoliday>,
     /// 上一次说过祝福语的节日（`日期:id`），避免重复。
     pub last_holiday_greeting: Option<String>,
+    /// 下次启动时保留搭建的方块（关掉的话每次启动都是空的）。
+    pub keep_world: bool,
+    /// 使用的导入形象 id（为空时是默认的步步）。
+    pub pet_skin: Option<String>,
 }
 
 fn default_machine_name() -> String {
@@ -93,6 +97,8 @@ impl Default for Settings {
             holiday_preview: None,
             custom_holidays: Vec::new(),
             last_holiday_greeting: None,
+            keep_world: true,
+            pet_skin: None,
         }
     }
 }

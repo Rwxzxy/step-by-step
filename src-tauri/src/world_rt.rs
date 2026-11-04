@@ -35,9 +35,9 @@ fn with_worlds<T>(f: impl FnOnce(&mut BTreeMap<String, World>) -> T) -> T {
 }
 
 fn save(worlds: &BTreeMap<String, World>) {
+    // 空的世界也存下来（每块屏一千来字节）：记住“这块屏是清空过的”，换显示器排列时它不会去接管别人的存档。
     let data: BTreeMap<String, WorldData> = worlds
         .iter()
-        .filter(|(_, w)| !w.is_empty())
         .map(|(k, w)| (k.clone(), w.to_data()))
         .collect();
     if let Err(e) = storage::write_json(&storage::path("world.json"), &data, false) {
@@ -60,6 +60,32 @@ pub fn build_mode() -> bool {
 pub fn set_build_mode(on: bool) {
     BUILD_MODE.store(on, Ordering::Release);
     bump();
+}
+
+/// 显示器排列变了时，让新 key 的显示器接管对应的旧存档（见 [`steppy_core::world::adopt_orphans`]）。
+pub fn adopt(current: &[(String, usize)]) {
+    let moved = with_worlds(|ws| {
+        let saved: Vec<(String, usize)> = ws
+            .iter()
+            .filter(|(_, w)| !w.is_empty())
+            .map(|(k, w)| (k.clone(), w.cols()))
+            .collect();
+        let known: Vec<String> = ws.keys().cloned().collect();
+        let moves = steppy_core::world::adopt_orphans(&saved, &known, current);
+        for (from, to) in &moves {
+            if let Some(w) = ws.remove(from) {
+                log::info!("显示器排列变了：把 {from} 上搭的方块搬到 {to}");
+                ws.insert(to.clone(), w);
+            }
+        }
+        if !moves.is_empty() {
+            save(ws);
+        }
+        !moves.is_empty()
+    });
+    if moved {
+        bump();
+    }
 }
 
 /// 某块显示器的世界（列数按当前屏宽调整）。
@@ -207,6 +233,8 @@ fn candidates(b: Block) -> Vec<String> {
         Block::Wool => &["white_wool.png"],
         Block::Flower => &["poppy.png", "dandelion.png"],
         Block::Workbench => &["crafting_table_front.png"],
+        // 资源包里的水是竖长条动画、灰度（游戏里按生物群系染色），前端取第一帧并染成蓝色。
+        Block::Water => &["water_still.png", "water_flow.png"],
         Block::Bed | Block::Air => &[],
     };
     v.extend(extra.iter().map(|s| s.to_string()));

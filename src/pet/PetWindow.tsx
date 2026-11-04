@@ -4,6 +4,8 @@ import { api, on } from "../api";
 import type { ActiveHoliday, Bubble, FramePayload, WindowInfo } from "../types";
 import { accentOf, useManifest } from "../themes/holidays";
 import { PetSprite } from "./PetSprite";
+import { SkinSprite } from "./SkinSprite";
+import { useSkin, useSkinVersion } from "./skin";
 import "./pet.css";
 
 const DRAG_THRESHOLD = 4;
@@ -15,6 +17,8 @@ export function PetWindow() {
   const [dragging, setDragging] = useState(false);
   const [holiday, setHoliday] = useState<ActiveHoliday | null>(null);
   const manifest = useManifest();
+  const skinVersion = useSkinVersion();
+  const skin = useSkin(info && !info.guest ? info.skin : null, skinVersion);
   const stageRef = useRef<HTMLDivElement>(null);
   const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
 
@@ -67,7 +71,7 @@ export function PetWindow() {
       window.clearTimeout(t);
       window.removeEventListener("resize", report);
     };
-  }, [current, info, frame.anim]);
+  }, [current, info, frame.anim, skin]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -144,13 +148,23 @@ export function PetWindow() {
         onContextMenu={(e) => e.preventDefault()}
         title={guest && info ? `${info.owner_name}的步步（来自「${info.machine_name}」）` : "点我打开面板，按住可以拖动"}
       >
-        <PetSprite
-          anim={frame.anim}
-          facing={frame.facing}
-          hue={info?.hue ?? 32}
-          holiday={holiday?.id}
-          holidayAsset={holiday ? manifest.themes[holiday.id] : undefined}
-        />
+        {skin ? (
+          <SkinSprite
+            skin={skin}
+            anim={frame.anim}
+            facing={frame.facing}
+            holiday={holiday?.id}
+            holidayAsset={holiday ? manifest.themes[holiday.id] : undefined}
+          />
+        ) : (
+          <PetSprite
+            anim={frame.anim}
+            facing={frame.facing}
+            hue={info?.hue ?? 32}
+            holiday={holiday?.id}
+            holidayAsset={holiday ? manifest.themes[holiday.id] : undefined}
+          />
+        )}
       </div>
     </div>
   );

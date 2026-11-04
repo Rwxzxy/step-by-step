@@ -82,6 +82,8 @@ fn snapshot(state: &Shared) -> Value {
         "strips": strips,
         "windows": windows,
         "build_mode": crate::world_rt::build_mode(),
+        "blocks": crate::world_rt::block_count(),
+        "pet_hit": state.pet.lock().unwrap().hit.get("pet").map(|r| r.iter().map(|h| json!([h.x, h.y, h.w, h.h])).collect::<Vec<_>>()),
         "peer_info": state.peers.lock().unwrap().iter().map(|(k, v)| (k.clone(), serde_json::to_value(&v.info).unwrap_or(Value::Null))).collect::<serde_json::Map<_, _>>(),
     })
 }
@@ -172,6 +174,16 @@ fn call(state: &Shared, cmd: &str, args: Value) -> Result<Value, String> {
         }
         "world_clear" => {
             crate::world_rt::clear(None);
+            Ok(Value::Null)
+        }
+        "import_skin" => {
+            // 端到端测试直接给路径（界面上是弹出选择文件夹的对话框）。
+            commands::import_and_use(&state.app, std::path::Path::new(&s(&args, "path")))
+                .map(|i| json!(i.id))
+        }
+        "set_pet_skin" => {
+            let id = args.get("id").and_then(|v| v.as_str()).map(String::from);
+            commands::use_skin(&state.app, id);
             Ok(Value::Null)
         }
         "recall" => {

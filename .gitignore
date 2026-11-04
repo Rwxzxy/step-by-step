@@ -8,3 +8,4 @@ src-tauri/binaries/
 .DS_Store
 coverage/
 *.tsbuildinfo
+__pycache__/

@@ -124,6 +124,15 @@ export function PetSprite({ anim, facing, hue, size = 112, day, holiday, holiday
         )}
         {holiday && holidayAsset?.layer !== "back" && <HolidayOverlay id={holiday} asset={holidayAsset} />}
       </g>
+      <PetEffects anim={anim} line={line} />
+    </svg>
+  );
+}
+
+/** 各动作的附加小图标（Zzz、星星、感叹号、汗滴），画在 120 × 120 的坐标系里。导入的形象也用它。 */
+export function PetEffects({ anim, line }: { anim: Anim; line: string }) {
+  return (
+    <>
       {anim === "sleep" && (
         <g className="zzz" fill={line} fontWeight="700">
           <text x="88" y="34" fontSize="12">z</text>
@@ -151,7 +160,7 @@ export function PetSprite({ anim, facing, hue, size = 112, day, holiday, holiday
           <path d="M22 46 C19 51 20 55 23 55 C26 55 26 51 22 46 Z" />
         </g>
       )}
-    </svg>
+    </>
   );
 }
 

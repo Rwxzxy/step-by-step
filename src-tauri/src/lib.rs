@@ -11,6 +11,7 @@ mod net_rt;
 mod notify;
 mod pet_rt;
 mod settings;
+mod skin_rt;
 mod state;
 mod storage;
 mod tray;
@@ -97,6 +98,10 @@ pub fn run() {
             agents_rt::start(state.clone(), agent_rx);
             calendar_rt::start_reminders(state.clone());
             holiday_rt::start(state.clone());
+            if !state.settings().keep_world {
+                // 用户选择了不保留搭建：每次启动从空白开始。
+                world_rt::clear(None);
+            }
             net_rt::start(state.clone());
             pet_rt::start(state.clone());
             // 没有系统托盘的环境（比如某些 Linux 桌面）：不影响其他功能。
@@ -157,6 +162,13 @@ pub fn run() {
             commands::get_build_mode,
             commands::set_build_mode,
             commands::import_texture_pack,
+            commands::list_skins,
+            commands::discover_skins,
+            commands::import_skin,
+            commands::import_skin_from,
+            commands::delete_skin,
+            commands::get_skin_sheet,
+            commands::set_pet_skin,
             commands::clear_texture_pack,
             commands::get_textures,
         ])

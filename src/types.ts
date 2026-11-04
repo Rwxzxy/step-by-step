@@ -117,6 +117,7 @@ export interface Snapshot {
   discovered_unpaired: number;
   net_port: number;
   holiday: ActiveHoliday | null;
+  skin: string | null;
 }
 
 export interface QuietPeriod {
@@ -146,6 +147,8 @@ export interface Settings {
   holiday_preview: string | null;
   custom_holidays: CustomHoliday[];
   last_holiday_greeting: string | null;
+  keep_world: boolean;
+  pet_skin: string | null;
 }
 
 export interface AgentIntegration {
@@ -178,6 +181,7 @@ export interface WindowInfo {
   hue: number;
   frame: FramePayload | null;
   holiday: ActiveHoliday | null;
+  skin: string | null;
 }
 
 export interface BubbleAction {
@@ -208,4 +212,32 @@ export interface BuildStatus {
   build_mode: boolean;
   blocks: number;
   textures: number;
+}
+
+export interface Atlas {
+  version: number;
+  rows: number;
+  width: number;
+  height: number;
+}
+
+export interface SkinInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  atlas: Atlas;
+  file: string;
+  source: string;
+}
+
+export interface SkinSheet extends SkinInfo {
+  /** 精灵图（data URL）。 */
+  url: string;
+}
+
+export interface FoundPet {
+  path: string;
+  id: string;
+  name: string;
+  imported: boolean;
 }

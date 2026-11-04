@@ -5,8 +5,9 @@
 - [一、改之前：素材从哪来、能不能放进仓库](#一改之前素材从哪来能不能放进仓库)
 - [二、换宠物形象](#二换宠物形象)
   - [1. 只换颜色（不改代码）](#1-只换颜色不改代码)
-  - [2. 节日外观（不改代码）](#2-节日外观不改代码)
-  - [3. 换成全新形象（改代码）](#3-换成全新形象改代码)
+  - [2. 导入像素形象（不改代码）](#2-导入像素形象不改代码)
+  - [3. 节日外观（不改代码）](#3-节日外观不改代码)
+  - [4. 修改默认形象的画法（改代码）](#4-修改默认形象的画法改代码)
 - [三、改方块材质](#三改方块材质)
   - [1. 从材质包导入（不改代码）](#1-从材质包导入不改代码)
   - [2. 修改自带纹理（改代码）](#2-修改自带纹理改代码)
@@ -27,7 +28,7 @@
 “只能自己用”的素材有两种用法：
 
 - 方块材质：用下面的“从材质包导入”，图片只复制到本机数据目录，不进仓库、不同步给其他电脑。
-- 宠物形象：在本机改代码、本机构建安装，**不要提交和推送**这些图片（可以在本地的 `.git/info/exclude` 里加上图片路径，防止误提交）。
+- 宠物形象：用下面的“导入像素形象”，同样只复制到本机数据目录。
 
 找素材可以去 [OpenGameArt](https://opengameart.org/)（可按 CC0 筛选）、[itch.io 免费素材](https://itch.io/game-assets/free)、[Kenney](https://kenney.nl/assets)（全部 CC0）。下载前看清每个页面写的协议。
 
@@ -37,20 +38,80 @@
 
 ### 1. 只换颜色（不改代码）
 
-面板 → 设置 → **宠物颜色** 滑块。每台电脑可以设不同颜色，串门时对方看到的也是你的颜色。
+面板 → 设置 → **宠物颜色** 滑块。只对默认的步步有效。每台电脑可以设不同颜色，串门时对方看到的也是你的颜色。
 
-### 2. 节日外观（不改代码）
+### 2. 导入像素形象（不改代码）
+
+**这种格式叫什么。** 像素小人的动画图叫**精灵图**（sprite sheet）：把一个角色的所有动画帧按网格拼在一张图上，程序每次只显示其中一格，快速切换就动起来了。步步支持的是 **Codex 宠物格式**，也就是 Codex 桌面版宠物用的格式，[Petdex](https://github.com/crafter-station/petdex) 网站上的几百只宠物都是这个格式。
+
+注意：Minecraft 的“皮肤”（64 × 64 的 PNG）是另一种东西，它是 3D 模型展开后的贴图，不是精灵图，不能直接导入。
+
+**操作。** 面板 → 设置 → **宠物形象**：
+
+- **从文件夹导入…**：选一个宠物文件夹，导入后立即换上。
+- **在本机找到的 Codex / Petdex 宠物**：自动列出 `~/.codex/pets`、`~/.petdex/pets` 里已经装好、还没导入的宠物，点“导入并换上”。
+- 点卡片切换形象，点“步步（默认）”换回来，点卡片右上角的 × 删除。
+- 选中一个导入的形象后，下面有“动作预览”，可以检查每个动作是否正常。
+
+**从 Petdex 获取宠物**，二选一：
+
+```bash
+npx petdex install steve-4
+```
+
+装好后会出现在“在本机找到的”列表里（需要 Node.js，`steve-4` 换成网站上宠物页面地址的最后一段）。也可以在网页上下载压缩包，**先解压**，再用“从文件夹导入”选解压出来的文件夹。
+
+**文件夹结构：**
+
+```
+某个宠物/
+  pet.json           ← 可选：{"id": "steve-4", "displayName": "Steve", "description": "…"}
+  spritesheet.webp   ← 或 spritesheet.png
+```
+
+- `pet.json` 里 `id` 决定存放的文件夹名（只保留小写字母、数字和连字符），`displayName` 是显示的名字。没有 `pet.json` 时用文件夹名。
+- 没有叫 `spritesheet` 的图片时，文件夹里**唯一一张**尺寸符合规格的 PNG / WebP 也行。
+- 同一个 `id` 再导入一次会覆盖更新。
+
+**图集规格：**
+
+- 8 列 × 9 行，每格 192 × 208 像素，整张 1536 × 1872。也认 11 行的新版图集（最后两行步步不用）。
+- 可以整体等比缩放（比如 768 × 936），但每格必须是整数像素。
+- PNG 或 WebP，背景透明，不超过 16 MB。
+- 每一行是一个动作，从左往右排，帧数固定。帧数不够的话，后面的格子留空（透明）。
+
+| 行 | 动作 | 帧数 | 一轮时长 | 步步什么时候播放 |
+| --- | --- | --- | --- | --- |
+| 0 | idle | 6 | 1.1 秒 | 待机；睡觉时放慢 2.5 倍，加 Zzz |
+| 1 | running-right | 8 | 1.06 秒 | 向右走 |
+| 2 | running-left | 8 | 1.06 秒 | 向左走 |
+| 3 | waving | 4 | 0.7 秒 | Claude 等你批准（加感叹号）、被鼠标拎起来 |
+| 4 | jumping | 5 | 0.84 秒 | 任务完成、节日问候（加星星）、下落 |
+| 5 | failed | 8 | 1.22 秒 | 任务出错（加汗滴） |
+| 6 | waiting | 6 | 1.01 秒 | 暂不使用 |
+| 7 | running | 6 | 0.82 秒 | 暂不使用 |
+| 8 | review | 6 | 1.03 秒 | 日程提醒（加一张小日历） |
+
+**程序会自动处理的事：**
+
+- 按待机那一行里角色的实际轮廓算大小：角色高度缩放到约 95 像素，脚底贴着任务栏或方块顶面。
+- 鼠标只有点在角色轮廓的范围里才会被宠物接住，旁边透明的地方能点到下面的窗口。
+- 不做镜像：向左、向右走用各自的那一行，其他动作按图里画的朝向显示。
+- 节日装饰、Zzz、感叹号这些小图标照常叠加在角色上。
+
+**存在哪：** 数据目录下的 `pets/<id>/`（数据目录见 README 的[数据存放位置](../README.md#数据存放位置)）。只在这台电脑上用：不进仓库、不同步给其他电脑；宠物去别人电脑串门时，对方看到的仍是默认的步步。
+
+**自己画：** 在 [Aseprite](https://www.aseprite.org/)、[Piskel](https://www.piskelapp.com/) 这类像素画软件里新建 1536 × 1872 的透明画布，把网格设成 192 × 208，按上表一行一个动作画好。每一帧里角色的脚底要在同一高度。导出 PNG 后放进一个文件夹，改名为 `spritesheet.png` 再导入。也可以先画一半大小（768 × 936，每格 96 × 104）。
+
+### 3. 节日外观（不改代码）
 
 给某个节日加帽子、灯笼之类的叠加图：把图片放进 `public/themes/`，在 `public/themes/manifest.json` 里登记，重新构建即可。画布尺寸、节日 id 等详见 [docs/themes.md](themes.md)。
 
-### 3. 换成全新形象（改代码）
+### 4. 修改默认形象的画法（改代码）
 
-现在的宠物“步步”是用 SVG 代码画出来的（`src/pet/PetSprite.tsx`），**没有**图片文件可以直接替换，所以换形象一定要改代码。有两条路：
+想换成别的角色，优先用上面的“导入像素形象”。这一节只在你想修改默认的“步步”本身时才需要：步步是用 SVG 代码画出来的（`src/pet/PetSprite.tsx`），没有图片文件可以替换。
 
-- **A. 改 SVG 画法**：适合在现有小团子的基础上改样子（换耳朵、换小芽、改五官）。
-- **B. 改用精灵图**：适合用现成的像素画角色（比如从素材网站下载的史莱姆）。
-
-两条路都要遵守下面的约定，宠物引擎（Rust）只认这些东西。
+改的时候要遵守下面的约定，宠物引擎（Rust）只认这些东西。
 
 #### 必须支持的 9 个动作
 
@@ -77,7 +138,7 @@
 - 宠物“身体”占窗口宽度的 30%–70%（`crates/steppy-core/src/pet.rs` 里 `Tuning` 的 `body_left` / `body_right`）。这决定了走到屏幕边缘、站上方块、串门出屏时按哪里算。新形象明显更宽或更窄时，改这两个数。
 - 鼠标能点到的范围会自动按宠物元素的外框计算（`PetWindow.tsx` 里带 `data-hit` 的元素），不用手动改。
 
-#### A. 改 SVG 画法
+#### 改 SVG 画法
 
 1. 打开 `src/pet/PetSprite.tsx`。所有图形都在一个 `viewBox="0 0 120 120"` 的坐标系里。
 2. 保留这几个 class，`src/pet/pet.css` 的动画靠它们驱动：
@@ -90,111 +151,13 @@
 4. 节日叠加图（`HolidayOverlay`）的两个插入点不要删，分别在身体前面和后面。
 5. `hue` 参数是“宠物颜色”滑块的值，身体颜色用它算出来；不想支持换色可以忽略它。
 
-#### B. 改用精灵图
+#### 想支持其他布局的精灵图
 
-**准备图片。** 做一张精灵图（sprite sheet）：所有帧一样大，每个动作占一行，从左往右排。比如：
+最省事的办法是用图片工具把它重新排成上面的 Codex 图集，再用“导入像素形象”导入。如果要改程序支持别的布局：
 
-```
-第 0 行 idle       □□□□
-第 1 行 walk       □□□□□□□□
-第 2 行 sleep      □□□□
-第 3 行 happy      □□□□□□
-第 4 行 raise_hand □□□□
-第 5 行 anxious    □□□□
-第 6 行 calendar   □□□□
-第 7 行 drag/fall  □□
-```
-
-- 背景透明的 PNG，角色朝右，脚贴着每一帧的底边。
-- 正方形帧最省事；不是正方形时，把下面代码里的 `height` 和 `backgroundPositionY` 按比例改。
-- 现成素材动作不够时可以复用：比如 `calendar` 用 `idle` 那一行，`fall` 和 `drag` 共用一行。
-
-把图片放到 `public/pets/mypet/sheet.png`（`mypet` 换成你的名字）。
-
-**新建组件** `src/pet/PetImage.tsx`：
-
-```tsx
-// 用一张精灵图显示宠物（替换 PetSprite）。
-import type { CSSProperties } from "react";
-import type { Anim, Side } from "../types";
-import { HolidayOverlay, type ThemeAsset } from "../themes/holidays";
-
-const SHEET = "/pets/mypet/sheet.png"; // 对应 public/pets/mypet/sheet.png
-const COLS = 8; // 精灵图一行最多几帧（决定图片总宽度）
-
-// 每个动作：第几行、几帧、每秒几帧。按你的精灵图改。
-const ROWS: Record<Anim, { row: number; frames: number; fps: number }> = {
-  idle: { row: 0, frames: 4, fps: 4 },
-  walk: { row: 1, frames: 8, fps: 10 },
-  sleep: { row: 2, frames: 4, fps: 2 },
-  happy: { row: 3, frames: 6, fps: 8 },
-  raise_hand: { row: 4, frames: 4, fps: 6 },
-  anxious: { row: 5, frames: 4, fps: 8 },
-  calendar: { row: 6, frames: 4, fps: 3 },
-  drag: { row: 7, frames: 2, fps: 4 },
-  fall: { row: 7, frames: 2, fps: 4 },
-};
-
-interface Props {
-  anim: Anim;
-  facing: Side;
-  hue?: number;
-  size?: number;
-  day?: number;
-  holiday?: string | null;
-  holidayAsset?: ThemeAsset;
-}
-
-export function PetImage({ anim, facing, size = 112, holiday, holidayAsset }: Props) {
-  const { row, frames, fps } = ROWS[anim];
-  const style = {
-    width: size,
-    height: size,
-    backgroundImage: `url(${SHEET})`,
-    backgroundSize: `${COLS * size}px auto`,
-    backgroundPositionY: `${-row * size}px`,
-    "--frames": frames,
-    "--size": `${size}px`,
-    animation: `pet-frames ${frames / fps}s steps(${frames}) infinite`,
-    transform: facing === "left" ? "scaleX(-1)" : undefined,
-  } as CSSProperties;
-  return (
-    <div className="pet-image" data-anim={anim} role="img" aria-label={`宠物：${anim}`} style={style}>
-      {holiday && (
-        <svg viewBox="0 0 120 120" width={size} height={size} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
-          <HolidayOverlay id={holiday} asset={holidayAsset} />
-        </svg>
-      )}
-    </div>
-  );
-}
-```
-
-**在 `src/pet/pet.css` 末尾加上**：
-
-```css
-.pet-image {
-  position: relative;
-  background-repeat: no-repeat;
-  image-rendering: pixelated; /* 像素画放大后保持清晰；非像素画删掉这一行 */
-}
-@keyframes pet-frames {
-  to { background-position-x: calc(var(--frames) * var(--size) * -1); }
-}
-```
-
-**替换使用的地方。** 把下面这些文件里的 `<PetSprite ... />` 换成 `<PetImage ... />`（同时改掉文件顶部的 `import`），属性不用改：
-
-- `src/pet/PetWindow.tsx`：桌面上的宠物和来串门的宠物；
-- `src/panel/PanelApp.tsx`：面板左上角的小头像、第一次打开时的欢迎页（两处）；
-- `src/panel/SettingsView.tsx`：设置页“宠物颜色”旁边的小预览；
-- `src/pet/SpriteGallery.tsx`：浏览器里的预览页。
-
-可以用 `grep -rn "<PetSprite" src` 确认没有漏掉的。
-
-最后删掉或改写 `src/__tests__/sprite.test.tsx` 里只适用于 SVG 版的断言（比如查找 `.zzz`、`.calendar-card` 的那几行）。
-
-这段示例代码已经过类型检查，逐帧切换的 CSS 也在 Chromium 里验证过。精灵图里没有 Zzz、感叹号这类小图标时，可以把 `PetSprite.tsx` 里 `zzz` / `exclaim` / `sweat` / `sparkles` 那几段 SVG 复制到 `PetImage` 的 `<svg>` 里一起画。
+- 动作行号、帧数和动作对应：`src/pet/skin.ts` 的 `STATES` 和 `stateFor`；
+- 显示（缩放、对齐、逐帧动画）：`src/pet/SkinSprite.tsx`；
+- 导入时的格式检查：`crates/steppy-core/src/skin.rs` 的 `detect_atlas` 和 `src-tauri/src/skin_rt.rs`。
 
 ---
 
@@ -228,13 +191,15 @@ export function PetImage({ anim, facing, size = 112, holiday, holidayAsset }: Pr
 | 花 | `flower.png` | `poppy.png`、`dandelion.png` |
 | 床 | `bed.png` | （没有，资源包里的床不是单张方块图） |
 | 工作台 | `workbench.png` | `crafting_table_front.png` |
+| 水 | `water.png` | `water_still.png`、`water_flow.png` |
 
 **图片要求：**
 
 - 必须是 PNG，每张不超过 512 KB；不符合的跳过，继续用自带纹理。
 - 正方形，任意分辨率（16×16、32×32、64×64 都行），会缩放到一格 24 像素显示，不做模糊处理，像素画保持清晰。
 - 竖长条的动画纹理（比如 16×256）只取最上面一帧。
-- 灰色的草地和树叶会自动染成绿色（有些资源包的这两种是灰度图，游戏里按地形着色）。
+- 灰色的草地和树叶会自动染成绿色，灰色的水染成蓝色（资源包里这几种是灰度图，游戏里按地形着色）。
+- 水总是半透明显示，能看到后面的桌面；最上面一格水会画一道浅色的水面。水是静止的，不做流动动画。
 - 透明部分照样透明（比如树叶的空隙、花的背景）。
 - 资源包里同名的文件有好几个时，优先用路径里带 `block` 的那个（方块纹理所在目录）。
 
@@ -261,7 +226,7 @@ export function PetImage({ anim, facing, size = 112, holiday, holidayAsset }: Pr
 1. **`crates/steppy-core/src/world.rs`**：在 `blocks!` 列表最后加一行：
 
    ```rust
-   Pumpkin = 17, "pumpkin", true;   // 编号、id、宠物能不能站在上面
+   Pumpkin = 18, "pumpkin", true;   // 编号、id、宠物能不能站在上面
    ```
 
    **编号只能往后加，不能改、不能复用。** 存档里存的就是编号，改了会让已有建筑变成别的方块。不想要某种方块了也不要删它那一行，否则老存档里的这种方块会变成空气。

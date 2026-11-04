@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { api, on } from "../api";
 import type { Snapshot } from "../types";
 import { PetSprite } from "../pet/PetSprite";
+import { SkinSprite } from "../pet/SkinSprite";
+import { useSkin, useSkinVersion } from "../pet/skin";
 import { AgentSection } from "./AgentSection";
 import { CalendarView } from "./CalendarView";
 import { MachinesSection } from "./MachinesSection";
@@ -62,7 +64,7 @@ export function PanelApp() {
     <div className="app">
       <nav className="sidebar" aria-label="导航">
         <div className="brand">
-          <PetSprite anim="idle" facing="right" hue={snap.me.hue} size={44} holiday={snap.holiday?.id} />
+          <Avatar snap={snap} />
           <div>
             <div className="brand-name">步步</div>
             <div className="brand-en">Steppy</div>
@@ -126,5 +128,15 @@ function Welcome({ go, hue }: { go: (t: Tab) => void; hue: number }) {
         开始设置
       </button>
     </div>
+  );
+}
+
+/** 面板左上角的头像：用这台电脑当前的形象。 */
+function Avatar({ snap }: { snap: Snapshot }) {
+  const skin = useSkin(snap.skin, useSkinVersion());
+  return skin ? (
+    <SkinSprite skin={skin} anim="idle" facing="right" size={44} holiday={snap.holiday?.id} />
+  ) : (
+    <PetSprite anim="idle" facing="right" hue={snap.me.hue} size={44} holiday={snap.holiday?.id} />
   );
 }

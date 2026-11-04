@@ -72,6 +72,8 @@ pub struct Snapshot {
     pub net_port: u16,
     /// 当前节日主题。
     pub holiday: Option<steppy_core::holiday::ActiveHoliday>,
+    /// 这台电脑上正在用的导入形象。
+    pub skin: Option<String>,
 }
 
 fn sorted(mut v: Vec<AgentSession>) -> Vec<AgentSession> {
@@ -176,6 +178,10 @@ pub fn build_snapshot(state: &Shared) -> Snapshot {
         discovered_unpaired,
         net_port: state.net.port(),
         holiday: crate::holiday_rt::current(state),
+        skin: state
+            .settings()
+            .pet_skin
+            .filter(|id| crate::skin_rt::get(id).is_some()),
     }
 }
 
@@ -193,6 +199,8 @@ pub fn get_settings(state: State<'_, Shared>) -> Settings {
 pub fn save_settings(state: State<'_, Shared>, settings: Settings) -> R<Settings> {
     let mut s = settings;
     s.sanitize();
+    // 形象只通过 set_pet_skin 修改，避免面板里旧的设置副本把刚换的形象覆盖回去。
+    s.pet_skin = state.settings().pet_skin.clone();
     *state.settings.write().unwrap() = s.clone();
     s.save();
     net_rt::update_my_info(&state);
@@ -512,6 +520,86 @@ pub async fn import_texture_pack(app: AppHandle) -> R<Option<crate::world_rt::Im
     let r = crate::world_rt::import_pack(&path).map_err(err)?;
     let _ = app.emit("world://textures", ());
     Ok(Some(r))
+}
+
+// ─────────────── 导入的宠物形象 ───────────────
+
+#[tauri::command]
+pub fn list_skins() -> Vec<crate::skin_rt::SkinInfo> {
+    crate::skin_rt::list()
+}
+
+#[tauri::command]
+pub fn discover_skins() -> Vec<crate::skin_rt::FoundPet> {
+    crate::skin_rt::discover()
+}
+
+/// 选一个文件夹导入，导入成功后直接换上。
+#[tauri::command]
+pub async fn import_skin(app: AppHandle) -> R<Option<crate::skin_rt::SkinInfo>> {
+    let picked = app.dialog().file().blocking_pick_folder();
+    let Some(p) = picked else { return Ok(None) };
+    let path = p.into_path().map_err(err)?;
+    import_and_use(&app, &path).map(Some)
+}
+
+/// 导入本机发现的 Codex / Petdex 宠物（路径必须来自 [`crate::skin_rt::discover`]）。
+#[tauri::command]
+pub fn import_skin_from(app: AppHandle, path: String) -> R<crate::skin_rt::SkinInfo> {
+    if !crate::skin_rt::discover().iter().any(|f| f.path == path) {
+        return Err("只能导入在本机 Codex / Petdex 宠物目录里找到的文件夹".into());
+    }
+    import_and_use(&app, std::path::Path::new(&path))
+}
+
+pub(crate) fn import_and_use(
+    app: &AppHandle,
+    path: &std::path::Path,
+) -> R<crate::skin_rt::SkinInfo> {
+    let info = crate::skin_rt::import(path)?;
+    use_skin(app, Some(info.id.clone()));
+    Ok(info)
+}
+
+pub(crate) fn use_skin(app: &AppHandle, id: Option<String>) {
+    let state = app.state::<Shared>();
+    {
+        let mut s = state.settings.write().unwrap();
+        s.pet_skin = id;
+        s.save();
+    }
+    if let Some(w) = app.get_webview_window("pet") {
+        let _ = w.emit("pet://appearance", ());
+    }
+    let _ = app.emit("steppy://skin", ());
+    state.mark_dirty();
+}
+
+#[tauri::command]
+pub fn delete_skin(app: AppHandle, id: String) -> R<()> {
+    crate::skin_rt::delete(&id)?;
+    let state = app.state::<Shared>();
+    if state.settings().pet_skin.as_deref() == Some(id.as_str()) {
+        use_skin(&app, None);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_skin_sheet(id: String) -> Option<crate::skin_rt::SkinSheet> {
+    crate::skin_rt::sheet(&id)
+}
+
+/// 换形象；`None` 换回默认的步步。
+#[tauri::command]
+pub fn set_pet_skin(app: AppHandle, id: Option<String>) -> R<()> {
+    if let Some(i) = &id {
+        if crate::skin_rt::get(i).is_none() {
+            return Err("找不到这个形象，可能已经被删除".into());
+        }
+    }
+    use_skin(&app, id);
+    Ok(())
 }
 
 #[tauri::command]

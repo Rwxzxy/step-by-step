@@ -41,6 +41,7 @@ export function snapshot(p: Partial<Snapshot> = {}): Snapshot {
     discovered_unpaired: 0,
     net_port: 47900,
     holiday: null,
+    skin: null,
     ...p,
   };
 }

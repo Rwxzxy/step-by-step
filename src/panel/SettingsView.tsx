@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import type { BuildStatus, CustomHoliday, HolidayInfo, IntegrationStatus, QuietPeriod, Settings, Snapshot } from "../types";
 import { PetSprite } from "../pet/PetSprite";
+import { SkinSection } from "./SkinSection";
 
 export function SettingsView({ snap, notify }: { snap: Snapshot; notify: (m: string) => void }) {
   const [s, setS] = useState<Settings | null>(null);
@@ -76,7 +77,9 @@ export function SettingsView({ snap, notify }: { snap: Snapshot; notify: (m: str
         <QuietEditor periods={s.quiet_periods} onChange={(q) => save({ quiet_periods: q })} />
       </section>
 
-      <BuildSection notify={notify} />
+      <SkinSection current={snap.skin} hue={s.pet_hue} notify={notify} />
+
+      <BuildSection notify={notify} settings={s} save={save} />
 
       <HolidaySection settings={s} snap={snap} save={save} />
 
@@ -87,7 +90,7 @@ export function SettingsView({ snap, notify }: { snap: Snapshot; notify: (m: str
   );
 }
 
-export function BuildSection({ notify }: { notify: (m: string) => void }) {
+export function BuildSection({ notify, settings, save }: { notify: (m: string) => void; settings: Settings; save: (p: Partial<Settings>) => void }) {
   const [st, setSt] = useState<BuildStatus | null>(null);
   const load = useCallback(() => {
     api.getBuildMode().then(setSt).catch(() => undefined);
@@ -117,6 +120,8 @@ export function BuildSection({ notify }: { notify: (m: string) => void }) {
           全部清空
         </button>
       </div>
+      <Toggle label="保留搭建的方块，下次启动还在" checked={settings.keep_world} onChange={(v) => save({ keep_world: v })} />
+      {!settings.keep_world && <p className="muted small">已关闭：每次启动步步时清空所有方块。</p>}
       <h3>材质包</h3>
       <p className="muted small">
         默认使用步步自带的像素纹理。也可以选择你电脑上的材质包文件夹导入纹理；导入的图片只保存在这台电脑的步步数据目录里，不会同步给其他电脑，也不会上传到任何地方。

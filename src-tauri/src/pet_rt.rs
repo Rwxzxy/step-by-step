@@ -188,6 +188,8 @@ pub struct WindowInfo {
     pub frame: Option<FramePayload>,
     /// 当前节日主题（来访的宠物也用这台机器的节日主题）。
     pub holiday: Option<steppy_core::holiday::ActiveHoliday>,
+    /// 导入的形象 id（只用在自家宠物上；来访的宠物总是默认的步步）。
+    pub skin: Option<String>,
 }
 
 pub fn window_info(state: &Shared, label: &str) -> WindowInfo {
@@ -202,6 +204,7 @@ pub fn window_info(state: &Shared, label: &str) -> WindowInfo {
                 hue: v.hue,
                 frame,
                 holiday: crate::holiday_rt::current(state),
+                skin: None,
             };
         }
     }
@@ -213,6 +216,7 @@ pub fn window_info(state: &Shared, label: &str) -> WindowInfo {
         hue: s.pet_hue,
         frame,
         holiday: crate::holiday_rt::current(state),
+        skin: s.pet_skin.filter(|id| crate::skin_rt::get(id).is_some()),
     }
 }
 
@@ -411,18 +415,28 @@ impl Engine {
         if ms.is_empty() {
             return;
         }
-        let mut mons: Vec<(String, Screen)> = ms
+        let keyed: Vec<(String, usize)> = ms
             .iter()
             .map(|m| {
-                let wa = m.work_area();
-                let scale = m.scale_factor();
                 let key = match m.name() {
                     Some(n) if !n.is_empty() => {
                         format!("{n}@{}x{}", m.position().x, m.position().y)
                     }
                     _ => format!("{}x{}", m.position().x, m.position().y),
                 };
-                let cols = steppy_core::world::cols_for(wa.size.width as f64 / scale);
+                let cols = steppy_core::world::cols_for(
+                    m.work_area().size.width as f64 / m.scale_factor(),
+                );
+                (key, cols)
+            })
+            .collect();
+        crate::world_rt::adopt(&keyed);
+        let mut mons: Vec<(String, Screen)> = ms
+            .iter()
+            .zip(keyed)
+            .map(|(m, (key, cols))| {
+                let wa = m.work_area();
+                let scale = m.scale_factor();
                 let world = crate::world_rt::world_for(&key, cols);
                 (
                     key,

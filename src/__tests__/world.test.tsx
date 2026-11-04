@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BLOCKS, BLOCK_LABEL, needsTint, pattern } from "../world/textures";
+import { BLOCKS, BLOCK_LABEL, TINT, needsTint, pattern } from "../world/textures";
 import type { StripView } from "../types";
 
 const calls: { name: string; args: unknown[] }[] = [];
@@ -55,12 +55,15 @@ describe("方块纹理", () => {
     expect(pattern("flower").filter((c) => c === null).length).toBeGreaterThan(200);
   });
 
-  it("灰度的树叶纹理需要染色，彩色的不用", () => {
+  it("灰度的树叶 / 水纹理需要染色，彩色的不用", () => {
     const grey = new Uint8ClampedArray([100, 100, 100, 255, 120, 120, 120, 255]);
     const green = new Uint8ClampedArray([40, 160, 40, 255, 60, 170, 50, 255]);
     expect(needsTint("leaves", grey)).toBe(true);
     expect(needsTint("leaves", green)).toBe(false);
     expect(needsTint("stone", grey)).toBe(false);
+    expect(needsTint("water", grey)).toBe(true);
+    expect(TINT.water).toMatch(/^#/);
+    expect(BLOCK_LABEL.water).toBe("水");
   });
 });
 

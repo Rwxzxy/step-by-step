@@ -18,6 +18,7 @@ export const BLOCKS = [
   "flower",
   "bed",
   "workbench",
+  "water",
 ] as const;
 
 export type BlockId = (typeof BLOCKS)[number];
@@ -39,7 +40,11 @@ export const BLOCK_LABEL: Record<BlockId, string> = {
   flower: "花",
   bed: "床",
   workbench: "工作台",
+  water: "水",
 };
+
+/** 半透明绘制的方块（能透过它看到后面的桌面）。 */
+export const TRANSLUCENT: Partial<Record<BlockId, number>> = { water: 0.78 };
 
 const N = 16;
 
@@ -175,6 +180,18 @@ export function pattern(id: BlockId): (string | null)[] {
       for (const x of [0, 1, 14, 15]) for (let y = 13; y < N; y++) set(x, y, "#5a3d22");
       break;
     }
+    case "water": {
+      // 静态的水面：深浅不一的蓝，加几道浅色波纹。
+      fill(["#2f6fd6", "#3a7be0", "#336fd0", "#3f82e6"]);
+      for (const [y, x0, len] of [
+        [2, 2, 5],
+        [5, 9, 5],
+        [9, 1, 4],
+        [12, 8, 6],
+      ] as const)
+        for (let x = x0; x < x0 + len; x++) set(x, y, "#7fb2f5");
+      break;
+    }
     case "workbench": {
       fill(wood);
       for (let x = 0; x < N; x++) for (let y = 0; y < 3; y++) set(x, y, "#7c5631");
@@ -213,9 +230,12 @@ export function builtinTexture(id: BlockId): HTMLCanvasElement | null {
   return c;
 }
 
-/** 有些材质包里的树叶 / 草是灰度图（游戏里按地形着色）。灰度时给它染上绿色。 */
+/** 材质包里按地形着色的方块是灰度图，导入后染成的颜色。 */
+export const TINT: Record<string, string> = { grass: "#6fae4a", leaves: "#6fae4a", water: "#3f76e4" };
+
+/** 有些材质包里的树叶 / 草 / 水是灰度图（游戏里按地形着色）。灰度时给它染上颜色。 */
 export function needsTint(id: string, data: Uint8ClampedArray): boolean {
-  if (id !== "leaves" && id !== "grass") return false;
+  if (!(id in TINT)) return false;
   let sat = 0;
   let n = 0;
   for (let i = 0; i < data.length; i += 4) {
@@ -246,7 +266,7 @@ export function loadPackTexture(id: string, url: string): Promise<HTMLCanvasElem
         const data = ctx.getImageData(0, 0, c.width, c.height).data;
         if (needsTint(id, data)) {
           ctx.globalCompositeOperation = "multiply";
-          ctx.fillStyle = "#6fae4a";
+          ctx.fillStyle = TINT[id];
           ctx.fillRect(0, 0, c.width, c.height);
           ctx.globalCompositeOperation = "destination-in";
           ctx.drawImage(img, 0, 0);

@@ -272,3 +272,26 @@ html.pet-window #root {
 @media (prefers-reduced-motion: reduce) {
   .pet-svg * { animation: none !important; }
 }
+
+/* 导入的形象（精灵图）。外框就是角色的范围，用来点击和对齐脚底。 */
+.skin-sprite {
+  position: relative;
+  overflow: visible;
+}
+.skin-sheet {
+  position: absolute;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.skin-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+@keyframes skin-frames {
+  to {
+    background-position-x: calc(var(--frames) * var(--fw) * -1);
+  }
+}

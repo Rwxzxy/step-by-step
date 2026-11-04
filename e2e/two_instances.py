@@ -21,7 +21,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import struct
 import urllib.request
+import zlib
 
 APP, HOOK = sys.argv[1], sys.argv[2]
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,6 +47,16 @@ class Instance:
         self.proc = subprocess.Popen([APP], env=env, stdout=self.log, stderr=subprocess.STDOUT)
         wait(lambda: os.path.exists(self.endpoint) and self.ep().get("pid") == self.proc.pid, f"{self.name} 启动", 60)
         wait(lambda: self.snap()["snapshot"]["net_port"] > 0, f"{self.name} 网络就绪", 30)
+
+    def restart(self):
+        """正常退出再启动（数据目录不变）。"""
+        self.proc.terminate()
+        try:
+            self.proc.wait(10)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait(10)
+        self.start()
 
     def crash(self):
         """模拟断电 / 拔网线：直接杀掉进程，不做任何清理。"""
@@ -94,6 +106,41 @@ class Instance:
         except subprocess.TimeoutExpired:
             self.proc.kill()
         self.log.close()
+
+
+def write_png(path, w, h, pixel):
+    """不依赖第三方库写一张 RGBA PNG。pixel(x, y) 返回 (r, g, b, a)。"""
+    raw = bytearray()
+    for y in range(h):
+        raw.append(0)
+        for x in range(w):
+            raw.extend(pixel(x, y))
+
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n")
+        f.write(chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)))
+        f.write(chunk(b"IDAT", zlib.compress(bytes(raw), 6)))
+        f.write(chunk(b"IEND", b""))
+
+
+def make_skin(folder):
+    """一张缩小一半的 Codex 图集（768 × 936，8 列 × 9 行）：每帧中间一个 32 × 76 的彩色小人，每行颜色不同。"""
+    os.makedirs(folder)
+    with open(os.path.join(folder, "pet.json"), "w") as f:
+        json.dump({"id": "test-cat", "displayName": "测试小猫", "spriteVersionNumber": 1}, f)
+    colors = [(230, 120, 60), (60, 160, 90), (60, 120, 220), (200, 80, 200), (240, 200, 40), (220, 60, 60), (90, 200, 200), (120, 90, 60), (150, 150, 150)]
+    clear = (0, 0, 0, 0)
+
+    def px(x, y):
+        fx, fy, row = x % 96, y % 104, y // 104
+        if 32 <= fx < 64 and 24 <= fy < 100:
+            return (*colors[row], 255)
+        return clear
+
+    write_png(os.path.join(folder, "spritesheet.png"), 768, 936, px)
 
 
 def wait(cond, what, timeout=30):
@@ -241,8 +288,53 @@ def main():
         wait(lambda: a.snap()["pet_pos"][1] == y0, "清空后宠物落回地面")
         a.call("set_build_mode", on=False)
         wait(lambda: a.snap()["strips"] == [], "退出建造模式且没有方块时，建造带窗口被销毁")
+
+        print("搭建的方块重启后还在…")
+        a.call("set_build_mode", on=True)
+        wait(lambda: len(a.snap()["strips"]) >= 1, "进入建造模式")
+        strip = a.snap()["strips"][0]
+        a.call("world_fill", label=strip, rows=1, block="bricks")
+        for x in range(4):  # 水不是实心的，宠物会走进水里、踩在砖上
+            a.call("world_set", label=strip, x=x, y=1, block="water")
+        a.call("set_build_mode", on=False)
+        blocks = a.snap()["blocks"]
+        assert blocks > 10, blocks
+        a.restart()
+        wait(lambda: a.snap()["blocks"] == blocks, "重启后方块数量不变")
+        wait(lambda: len(a.snap()["strips"]) >= 1, "重启后自动显示建造带")
+        wait(lambda: a.snap()["pet_pos"] is not None and a.snap()["pet_pos"][1] == y0 - 24, "宠物站在保留下来的方块上")
+        a.call("patch_settings", keep_world=False)
+        a.restart()
+        wait(lambda: a.snap()["blocks"] == 0 and a.snap()["strips"] == [], "关闭“保留”后，重启时清空")
+        a.call("patch_settings", keep_world=True)
+        wait(lambda: idb in a.snap()["peers"] and ida in b.snap()["peers"], "A 重启后和 B 重新连上", 60)
         a.call("open_panel", tab="overview")
         wait(lambda: "panel" in a.snap()["windows"], "打开面板时才创建面板窗口")
+
+        print("导入像素形象…")
+        def holder_w():
+            rects = a.snap()["pet_hit"] or []
+            return rects[-1][2] if rects else None
+
+        wait(lambda: holder_w() is not None and abs(holder_w() - 112) < 2, "默认形象的点击范围 112 像素宽")
+        bad = os.path.join(base, "bad-pet")
+        os.makedirs(bad)
+        write_png(os.path.join(bad, "spritesheet.png"), 64, 64, lambda x, y: (0, 0, 0, 255))
+        try:
+            a.call("import_skin", path=bad)
+            raise AssertionError("尺寸不对的精灵图不应该导入成功")
+        except RuntimeError as e:
+            assert "64 × 64" in str(e), e
+            print("  ✓ 尺寸不对的精灵图被拒绝，并说明了原因")
+        make_skin(os.path.join(base, "my-pet"))
+        assert a.call("import_skin", path=os.path.join(base, "my-pet")) == "test-cat"
+        assert a.snap()["snapshot"]["skin"] == "test-cat"
+        # 小人在标准帧里是 64 × 152，按身高缩放到约 95 像素：点击范围应该约 40 像素宽。
+        wait(lambda: abs(holder_w() - 64 * 112 * 0.85 / 152) < 2, "宠物窗口换上了导入的形象（点击范围贴合小人）")
+        a.call("set_pet_skin", id=None)
+        wait(lambda: abs(holder_w() - 112) < 2, "换回默认的步步")
+        a.call("set_pet_skin", id="test-cat")
+        wait(lambda: abs(holder_w() - 40) < 2, "再换上导入的形象")
 
         print("踢出成员…")
         epoch0 = a.snap()["snapshot"]["group"]["epoch"]
