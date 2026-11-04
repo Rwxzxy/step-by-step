@@ -1,0 +1,11 @@
+/target
+node_modules/
+/dist
+src-tauri/target
+src-tauri/gen/schemas
+src-tauri/binaries/
+*.log
+.DS_Store
+coverage/
+*.tsbuildinfo
+__pycache__/

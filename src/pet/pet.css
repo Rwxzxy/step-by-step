@@ -1,0 +1,297 @@
+/* 宠物窗口：全透明，只有宠物和气泡可见。 */
+html.pet-window {
+  color-scheme: normal;
+}
+html.pet-window,
+html.pet-window body,
+html.pet-window #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+}
+
+.pet-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.pet-holder {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  cursor: grab;
+  touch-action: none;
+}
+.pet-holder.dragging {
+  cursor: grabbing;
+}
+
+.pet-svg {
+  display: block;
+  overflow: visible;
+}
+.pet-svg .pet-flip {
+  transform-origin: 60px 60px;
+  transform-box: view-box;
+}
+.pet-svg.facing-left .pet-flip {
+  transform: scaleX(-1);
+}
+/* 默认 view-box；只有需要“以自身中心缩放”的元素才用 fill-box。
+   注意不能对带 transform 属性的元素（手臂）用 fill-box，否则旋转支点会偏移。 */
+.pet-svg .blink,
+.pet-svg .sparkles path,
+.pet-svg .exclaim {
+  transform-box: fill-box;
+}
+
+/* 待机：呼吸 + 眨眼 */
+.anim-idle .pet-body {
+  animation: breathe 2.6s ease-in-out infinite;
+  transform-origin: 60px 108px;
+}
+.blink {
+  animation: blink 4.2s infinite;
+  transform-origin: center;
+}
+@keyframes breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.965) scaleX(1.015); }
+}
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+
+/* 走路：身体上下颠，脚交替 */
+.anim-walk .pet-body {
+  animation: bob 0.5s ease-in-out infinite;
+}
+.anim-walk .foot-l {
+  animation: step 0.5s ease-in-out infinite;
+}
+.anim-walk .foot-r {
+  animation: step 0.5s ease-in-out infinite reverse;
+}
+@keyframes bob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-4px) rotate(2deg); }
+}
+@keyframes step {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* 睡觉：慢呼吸，Zzz 飘起来 */
+.anim-sleep .pet-body {
+  animation: breathe 4s ease-in-out infinite;
+  transform-origin: 60px 108px;
+}
+.zzz text {
+  animation: zfloat 3s ease-in-out infinite;
+  opacity: 0;
+}
+.zzz text:nth-child(2) { animation-delay: 0.6s; }
+.zzz text:nth-child(3) { animation-delay: 1.2s; }
+@keyframes zfloat {
+  0% { opacity: 0; transform: translateY(6px); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+
+/* 开心：蹦跳 + 举起双手 + 星星 */
+.anim-happy .pet-body,
+.anim-happy .pet-feet {
+  animation: jump 0.7s cubic-bezier(0.3, 0.7, 0.4, 1) infinite;
+}
+.sparkles path {
+  animation: twinkle 0.9s ease-in-out infinite;
+  transform-origin: center;
+}
+.sparkles path:nth-child(2) { animation-delay: 0.3s; }
+.sparkles path:nth-child(3) { animation-delay: 0.6s; }
+@keyframes jump {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-14px); }
+}
+@keyframes twinkle {
+  0%, 100% { transform: scale(0.5); opacity: 0.4; }
+  50% { transform: scale(1.15); opacity: 1; }
+}
+
+/* 举手：右手高高举起并挥动，头上一个感叹号 */
+.anim-raise_hand .exclaim {
+  animation: pop 1s ease-in-out infinite;
+  transform-origin: center;
+}
+@keyframes pop {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+/* 着急：左右快速晃动，冒汗 */
+.anim-anxious .pet-body,
+.anim-anxious .pet-feet {
+  animation: shake 0.25s linear infinite;
+}
+.sweat path {
+  animation: drip 1.2s ease-in infinite;
+}
+.sweat path:nth-child(2) { animation-delay: 0.5s; }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2.5px); }
+  75% { transform: translateX(2.5px); }
+}
+@keyframes drip {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(10px); opacity: 0; }
+}
+
+/* 看日历：抱着日历低头点头 */
+.anim-calendar .pet-body {
+  animation: nod 1.4s ease-in-out infinite;
+  transform-origin: 60px 100px;
+}
+.anim-calendar .calendar-card {
+  animation: nod 1.4s ease-in-out infinite;
+  transform-origin: 60px 100px;
+  transform-box: view-box;
+}
+@keyframes nod {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(3deg) translateY(1px); }
+}
+
+/* 被拎起来 / 下落：脚垂下来，左右晃 */
+.anim-drag .pet-flip {
+  animation: dangle 1.2s ease-in-out infinite;
+  transform-origin: 60px 30px;
+}
+.anim-drag .pet-feet,
+.anim-fall .pet-feet {
+  transform: translateY(5px);
+}
+@keyframes dangle {
+  0%, 100% { transform: rotate(-6deg); }
+  50% { transform: rotate(6deg); }
+}
+
+/* 主人名字（来访时显示） */
+.name-tag {
+  position: absolute;
+  left: 50%;
+  bottom: 112px;
+  transform: translateX(-50%);
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: rgba(40, 40, 50, 0.72);
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 气泡 */
+.bubble {
+  position: absolute;
+  left: 50%;
+  bottom: 118px;
+  transform: translateX(-50%);
+  max-width: 220px;
+  min-width: 96px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: #fffdf7;
+  color: #3a3330;
+  border: 2px solid #4a3f3a;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
+  animation: bubble-in 0.25s ease-out;
+  word-break: break-word;
+}
+.bubble.has-tag {
+  bottom: 136px;
+}
+.bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  width: 12px;
+  height: 12px;
+  background: #fffdf7;
+  border-right: 2px solid #4a3f3a;
+  border-bottom: 2px solid #4a3f3a;
+  transform: translateX(-50%) rotate(45deg);
+}
+.bubble.kind-done { border-color: #3a9a5b; }
+.bubble.kind-waiting { border-color: #e39a1b; }
+.bubble.kind-error { border-color: #d0453f; }
+.bubble.kind-calendar { border-color: #4f7fd6; }
+.bubble.kind-holiday { border-color: var(--accent, #d8342a); }
+.bubble.kind-holiday::after { border-color: var(--accent, #d8342a); }
+.bubble.kind-done::after { border-color: #3a9a5b; }
+.bubble.kind-waiting::after { border-color: #e39a1b; }
+.bubble.kind-error::after { border-color: #d0453f; }
+.bubble.kind-calendar::after { border-color: #4f7fd6; }
+.bubble-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.bubble-actions button {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  border: 1px solid #b9aea6;
+  background: #fff;
+  color: #3a3330;
+  cursor: pointer;
+}
+.bubble-actions button:hover {
+  background: #f3ece4;
+}
+@keyframes bubble-in {
+  from { opacity: 0; transform: translate(-50%, 6px) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-svg * { animation: none !important; }
+}
+
+/* 导入的形象（精灵图）。外框就是角色的范围，用来点击和对齐脚底。 */
+.skin-sprite {
+  position: relative;
+  overflow: visible;
+}
+.skin-sheet {
+  position: absolute;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.skin-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+@keyframes skin-frames {
+  to {
+    background-position-x: calc(var(--frames) * var(--fw) * -1);
+  }
+}

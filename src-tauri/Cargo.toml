@@ -1,0 +1,46 @@
+[package]
+name = "steppy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "步步 Steppy：会提醒 Agent 进度和日程、能在局域网里串门的桌面宠物"
+default-run = "steppy"
+
+[lib]
+name = "steppy_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "steppy"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+steppy-core = { path = "../crates/steppy-core" }
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri-plugin-notification = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-log = "2"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "sync", "macros"] }
+mdns-sd = "0.13"
+tiny_http = "0.12"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+gethostname = "1"
+whoami = "1"
+rand = "0.8"
+hex = "0.4"
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
+subtle = "2"
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = "3"

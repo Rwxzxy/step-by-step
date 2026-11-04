@@ -1,0 +1,80 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Steppy",
+  "mainBinaryName": "steppy",
+  "version": "1.0.0",
+  "identifier": "app.steppy.desktop",
+  "build": {
+    "beforeDevCommand": "npm run build:hook && npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build:hook && npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "pet",
+        "title": "步步",
+        "url": "index.html",
+        "width": 240,
+        "height": 210,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "focus": false,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "msi",
+      "deb",
+      "appimage",
+      "dmg",
+      "app"
+    ],
+    "publisher": "Steppy",
+    "category": "Productivity",
+    "shortDescription": "步步：提醒 Agent 进度和日程、会串门的桌面宠物",
+    "longDescription": "步步 Steppy 是一只原创桌面宠物：提醒 Claude Code / Codex CLI 的进度和计划，管理日程并按时提醒，还能在局域网里同步状态、去别的电脑串门。",
+    "externalBin": [
+      "binaries/steppy-hook"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "installMode": "currentUser"
+      },
+      "wix": {
+        "language": "zh-CN"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["crates/steppy-core", "crates/steppy-hook", "src-tauri"]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+authors = ["Steppy contributors"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+
+[profile.release.package.steppy-hook]
+opt-level = "z"

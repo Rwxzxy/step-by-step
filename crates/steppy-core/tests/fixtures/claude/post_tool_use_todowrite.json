@@ -1,0 +1,17 @@
+{
+  "session_id": "todo-session",
+  "transcript_path": "/home/me/.claude/projects/-home-me-app/todo-session.jsonl",
+  "cwd": "/home/me/app",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "TodoWrite",
+  "tool_input": {
+    "todos": [
+      { "content": "阅读现有代码", "status": "completed", "activeForm": "正在阅读现有代码" },
+      { "content": "编写单元测试", "status": "in_progress", "activeForm": "正在编写单元测试" },
+      { "content": "提交修改", "status": "pending", "activeForm": "正在提交修改" }
+    ]
+  },
+  "tool_response": {},
+  "tool_use_id": "toolu_todo"
+}
