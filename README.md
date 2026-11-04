@@ -27,6 +27,7 @@
 - [串门协议：同一时刻只在一台机器上](#串门协议同一时刻只在一台机器上)
 - [平台支持与已知限制](#平台支持与已知限制)
 - [数据存放位置](#数据存放位置)
+- [维护：换宠物形象、改方块材质](#维护换宠物形象改方块材质)
 - [开发与测试](#开发与测试)
 - [真机手动验收清单](#真机手动验收清单)
 
@@ -193,7 +194,15 @@
 | macOS | `~/Library/Application Support/steppy/` |
 | Linux | `$XDG_DATA_HOME/steppy/`（默认 `~/.local/share/steppy/`） |
 
-里面有：`settings.json`（设置）、`identity.json`（身份私钥，0600）、`group.json`（家庭组和组密钥，0600）、`calendar.json`（日程）、`hook-token`（0600）、`endpoint.json`（运行时）、`pet.json`（宠物位置）、`bin/steppy-hook`。日志在系统的应用日志目录（Windows `%LOCALAPPDATA%\app.steppy.desktop\logs`）。
+里面有：`settings.json`（设置）、`identity.json`（身份私钥，0600）、`group.json`（家庭组和组密钥，0600）、`calendar.json`（日程）、`hook-token`（0600）、`endpoint.json`（运行时）、`pet.json`（宠物位置）、`world.json`（桌面建造的方块）、`textures/`（从材质包导入的方块纹理）、`bin/steppy-hook`。日志在系统的应用日志目录（Windows `%LOCALAPPDATA%\app.steppy.desktop\logs`）。
+
+## 维护：换宠物形象、改方块材质
+
+见 [docs/maintenance.md](docs/maintenance.md)，内容包括：
+
+- 素材能不能放进仓库（这个仓库是公开的，Minecraft 等别人的版权素材只能在本机用）；
+- 换宠物颜色、节日外观（不改代码），以及换成全新形象（改 SVG，或改用精灵图，附示例代码）；
+- 从材质包导入方块纹理（文件名对照表、图片要求），修改自带纹理，新增一种方块。
 
 ## 开发与测试
 
